@@ -1,0 +1,24 @@
+# secrets
+.env
+
+# JetBrains
+.idea/
+
+# uv / python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.python-version
+
+# data outputs
+data/sessions/
+data/reports/
+manuscript/compiled/
+
+# streamlit
+.streamlit/
+
+# OS
+.DS_Store
+Thumbs.db
