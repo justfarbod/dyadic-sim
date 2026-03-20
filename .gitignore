@@ -14,7 +14,7 @@ __pycache__/
 # data outputs
 data/sessions/
 data/reports/
-manuscript/compiled/
+manuscript/
 
 # streamlit
 .streamlit/
