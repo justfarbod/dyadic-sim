@@ -1,0 +1,33 @@
+# Model registry and role assignments
+# Change the `roles` section to swap models between sessions
+# All other sections define what is available
+
+providers:
+#  anthropic:
+#    base_url: https://api.anthropic.com
+#    models:
+#      - claude-sonnet-4-6
+#      - claude-opus-4-6
+#
+#  openai:
+#    base_url: https://api.openai.com/v1
+#    models:
+#      - gpt-4o
+#      - o1
+
+  ollama:
+    base_url: http://localhost:11434
+    models:
+      - llama3.1
+
+# Active role assignments for a session
+# These are the defaults; override at runtime with --therapist / --patient flags
+roles:
+  therapist: llama3.1
+  patient: llama3.1
+
+# Counterfactual / swap config
+# Used with: uv run python run.py --swap
+swap:
+  therapist: llama3.1
+  patient: mistral-nemo

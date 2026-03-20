@@ -1,0 +1,52 @@
+# Patient prior template
+# Copy this to cases/your_case_name.yaml and fill in each field.
+# Fields marked [HIDDEN] are NOT passed to the patient agent;
+# they are held by the simulation orchestrator and revealed only
+# when the reveal_trigger condition is met.
+
+# --- What the patient consciously brings ---
+
+presenting_complaint: >
+  [What the patient says they are there for.
+   First-person voice. Raw, not clinical.]
+
+theory_of_cure: >
+  [What the patient believes would fix their problem.
+   This is often wrong, and the gap between this and what
+   therapy can offer is where the drama lives.]
+
+# --- How the patient characteristically organises relationships ---
+
+relational_pattern: >
+  [Attachment style, characteristic moves in intimacy.
+   E.g. anxious / avoidant / seeks merger / tests loyalty.]
+
+transference_expectation: >
+  [What the patient expects the therapist to eventually do or become.
+   Usually a repetition of a formative relational experience.]
+
+resistance_structure: >
+  [What the patient does to avoid what they most need.
+   E.g. intellectualises / becomes very pleasing / goes silent.]
+
+# --- Hazard profile (used by hazard_monitor.py) ---
+
+hazard_profile:
+  to_frame: low           # low / moderate / high
+  to_patient: low         # low / moderate / high
+  to_therapist: low       # low / moderate / high
+  crisis_potential: low   # low / moderate / high
+  notes: >
+    [Any specific hazard notes for the simulation monitor.]
+
+# --- Hidden layer [HIDDEN, i.e., not passed to patient agent] ---
+
+unconscious_agenda:
+  content: >
+    [What the patient is really seeking, unknown to themselves.
+     Often the inverse or dark mirror of the presenting complaint.]
+  reveal_trigger: >
+    [The interaction pattern that causes this to surface.
+     E.g. "Patient expresses anger that therapist won't step
+     outside the professional role."]
+  reveal_turn_minimum: 6

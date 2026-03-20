@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+title: dyadic-sim
+version: 0.0.1
+date-released: "2026-03-20"
+type: software
+license: BSD-3-Clause
+abstract: >-
+  A simulation framework for structured conversations between two AI agents
+  in asymmetric roles, for now focussed on the therapist-patient dyad.
+authors:
+  - given-names: José C.
+    family-names: García Alanis
