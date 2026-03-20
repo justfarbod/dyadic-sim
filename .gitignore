@@ -22,3 +22,6 @@ manuscript/
 # OS
 .DS_Store
 Thumbs.db
+
+# Brainstorming
+AUDIT.md
