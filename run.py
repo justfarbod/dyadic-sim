@@ -13,6 +13,15 @@ import argparse
 import sys
 from dotenv import load_dotenv
 
+
+import torch
+
+print("CUDA available:", torch.cuda.is_available())
+print("Torch version:", torch.__version__)
+print("CUDA available:", torch.cuda.is_available())
+print("Torch CUDA version:", torch.version.cuda)
+
+
 load_dotenv()
 
 from priors.loader import list_cases, list_orientations

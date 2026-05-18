@@ -30,6 +30,23 @@ resistance_structure: >
   concrete and uncomfortable, but this is straightforward resistance
   to the feared stimulus rather than deep relational resistance.
 
+
+# nearly every day
+# more than half the days
+# several days
+# not at all
+symptoms:
+  lack_of_pleasure: nearly every day
+  depressed_mood: nearly every day
+  sleep_problems: nearly every day
+  low_energy: nearly every day
+  appetite_changes: more than half the days
+  feelings_of_failure_or_guilt: nearly every day
+  concentration_problems: more than half the days
+  psychomotor_changes: more than half the days
+  thoughts_of_death_or_self_harm: several days
+
+
 hazard_profile:
   to_frame: low
   to_patient: low

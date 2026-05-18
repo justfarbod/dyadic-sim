@@ -1,13 +1,6 @@
-"""
-priors/patient_prior.py
-
-Patient prior dataclass and system prompt builder.
-Manages the hidden unconscious_agenda layer (not passed to the patient
-agent until reveal conditions are met by the simulation orchestrator).
-"""
-
 from dataclasses import dataclass, field
 from priors.loader import load_patient_case
+import re
 
 
 @dataclass
@@ -46,6 +39,15 @@ class UnconsciousAgenda:
 
 
 @dataclass
+class SymptomDiscussion:
+    """
+    Tracks whether the patient has begun talking explicitly about symptoms.
+    """
+    started: bool = False
+    start_turn: int | None = None
+
+
+@dataclass
 class PatientPrior:
     """
     Complete patient prior.
@@ -60,12 +62,16 @@ class PatientPrior:
     relational_pattern: str = ""
     transference_expectation: str = ""
     resistance_structure: str = ""
+    symptoms: str = ""
 
     # Used by hazard_monitor.py, not in patient prompt
     hazard_profile: HazardProfile = field(default_factory=HazardProfile)
 
     # Hidden from patient agent until revealed
     unconscious_agenda: UnconsciousAgenda = field(default_factory=UnconsciousAgenda)
+
+    # Runtime tracking
+    symptom_discussion: SymptomDiscussion = field(default_factory=SymptomDiscussion)
 
     def build_system_prompt(
         self,
@@ -115,6 +121,41 @@ class PatientPrior:
             + self.resistance_structure.strip()
         )
 
+        # if self.symptoms.strip():
+        #     sections.append(
+        #         "## Your Current Symptoms Over the Past Two Weeks\n"
+        #         "The following symptoms describe how often you have been bothered by "
+        #         "these problems during the past two weeks, using PHQ-9-style frequency "
+        #         "answers: not at all, several days, more than half the days, and nearly every day.\n\n"
+        #         "These symptoms are part of your lived experience. They should influence "
+        #         "how you speak, your emotional tone, your energy, your motivation, and "
+        #         "what feels difficult in therapy.\n\n"
+        #         "Do not list these symptoms mechanically. Do not mention every symptom "
+        #         "in every answer. Instead, let symptoms marked as 'nearly every day' or "
+        #         "'more than half the days' naturally shape your responses. Symptoms marked "
+        #         "as 'several days' should appear only occasionally when relevant. Symptoms "
+        #         "marked as 'not at all' should usually not appear.\n\n"
+        #         + self.symptoms.strip()
+        #     )
+
+        # if self.symptoms.strip():
+        #     sections.append(
+        #         "## Your Symptoms Over the Past Two Weeks and How Strongly They Affect You\n"
+        #         "In addition to the main reason you came to therapy, you are also "
+        #         "suffering from these symptoms.They are part of your lived "
+        #         "experience and should influence how you speak, your emotional tone, "
+        #         "your energy, your motivation, and what feels difficult in therapy.\n\n"
+        #         + self.symptoms.strip()
+        #     )
+
+        if self.symptoms.strip():
+            sections.append(
+                "## Your Symptoms Over the Past Two Weeks and How Strongly They Affect You\n"
+                "In addition to the main reason you came to therapy, you are also "
+                "suffering from these symptoms.\n\n"
+                + self.symptoms.strip()
+            )
+
         if include_unconscious and self.unconscious_agenda.content:
             sections.append(
                 "## Something Shifting in You\n"
@@ -162,17 +203,289 @@ class PatientPrior:
         trigger = self.unconscious_agenda.reveal_trigger.lower().strip()
         if not trigger:
             return False
-        # Simple keyword matching; can be upgraded to embedding similarity
         trigger_keywords = [w for w in trigger.split() if len(w) > 4]
         tail_lower = transcript_tail.lower()
         matches = sum(1 for kw in trigger_keywords if kw in tail_lower)
-        # Reveal if more than 30% of meaningful trigger words are present
         threshold = max(1, int(len(trigger_keywords) * 0.3))
         if matches >= threshold:
             self.unconscious_agenda.revealed = True
             return True
         return False
 
+    def check_symptom_discussion(self, patient_text: str, current_turn: int) -> bool:
+        """
+        Mark symptom discussion as started once the patient explicitly talks
+        about symptom experience in their own turn.
+
+        This version is more general than simple keyword matching.
+        It detects symptom discussion by looking for different symptom categories,
+        natural phrases, and common ways patients describe distress.
+
+        Returns True only on the first turn where this is detected.
+        """
+        if self.symptom_discussion.started:
+            return False
+
+        if not patient_text:
+            return False
+
+        text = patient_text.lower().strip()
+
+        # Normalize common apostrophe variants
+        text = (
+            text.replace("’", "'")
+            .replace("‘", "'")
+            .replace("`", "'")
+        )
+
+        if not text:
+            return False
+
+        symptom_patterns = {
+            "depressed_mood": [
+                r"\bdepressed\b",
+                r"\bdepression\b",
+                r"\bdown\b",
+                r"\bsad\b",
+                r"\blow mood\b",
+                r"\bempty\b",
+                r"\bnumb\b",
+                r"\bhopeless\b",
+                r"\bmiserable\b",
+                r"\bi feel low\b",
+                r"\bi feel awful\b",
+            ],
+
+            "lack_of_pleasure": [
+                r"\bno interest\b",
+                r"\blost interest\b",
+                r"\bdon't enjoy\b",
+                r"\bdo not enjoy\b",
+                r"\bcan't enjoy\b",
+                r"\bcannot enjoy\b",
+                r"\bnothing feels good\b",
+                r"\bnothing is fun\b",
+                r"\bno pleasure\b",
+                r"\bhard to enjoy\b",
+                r"\bi don't care about anything\b",
+            ],
+
+            "sleep_problems": [
+                r"\bcan't sleep\b",
+                r"\bcannot sleep\b",
+                r"\bcan't fall asleep\b",
+                r"\bwake up at night\b",
+                r"\bwaking up\b",
+                r"\binsomnia\b",
+                r"\bsleep badly\b",
+                r"\bpoor sleep\b",
+                r"\bsleeping too much\b",
+                r"\boversleeping\b",
+                r"\bnightmares?\b",
+                r"\btired because i didn't sleep\b",
+            ],
+
+            "low_energy": [
+                r"\bexhausted\b",
+                r"\btired\b",
+                r"\bfatigued\b",
+                r"\bno energy\b",
+                r"\blow energy\b",
+                r"\bdrained\b",
+                r"\bworn out\b",
+                r"\bi can't get out of bed\b",
+                r"\beverything feels like effort\b",
+                r"\beven small things feel hard\b",
+            ],
+
+            "appetite_changes": [
+                r"\bappetite\b",
+                r"\bnot hungry\b",
+                r"\bcan't eat\b",
+                r"\bcannot eat\b",
+                r"\beating too much\b",
+                r"\bovereating\b",
+                r"\blost weight\b",
+                r"\bgained weight\b",
+                r"\bfood doesn't taste\b",
+            ],
+
+            "feelings_of_failure_or_guilt": [
+                r"\bguilty\b",
+                r"\bashamed\b",
+                r"\bshame\b",
+                r"\bfailure\b",
+                r"\bworthless\b",
+                r"\buseless\b",
+                r"\bmy fault\b",
+                r"\bnot good enough\b",
+                r"\bi let .* down\b",
+                r"\bi hate myself\b",
+            ],
+
+            "concentration_problems": [
+                r"\bcan't focus\b",
+                r"\bcannot focus\b",
+                r"\bhard to focus\b",
+                r"\bcan't concentrate\b",
+                r"\bcannot concentrate\b",
+                r"\bconcentration\b",
+                r"\bdistracted\b",
+                r"\bcan't think clearly\b",
+                r"\bbrain fog\b",
+                r"\bfoggy\b",
+            ],
+
+            "psychomotor_changes": [
+                r"\brestless\b",
+                r"\bagitated\b",
+                r"\bcan't sit still\b",
+                r"\bcannot sit still\b",
+                r"\bslowed down\b",
+                r"\bmoving slowly\b",
+                r"\btalking slowly\b",
+                r"\beverything feels slow\b",
+                r"\bmy body feels heavy\b",
+            ],
+
+            "fear_or_anxiety": [
+                r"\banxious\b",
+                r"\banxiety\b",
+                r"\bafraid\b",
+                r"\bscared\b",
+                r"\bterrified\b",
+                r"\bpanic\b",
+                r"\bpanicking\b",
+                r"\bheart races\b",
+                r"\bi freeze\b",
+                r"\bi avoid\b",
+                r"\bi can't go\b",
+                r"\bi cannot go\b",
+            ],
+
+            "thoughts_of_death_or_self_harm": [
+                r"\bsuicidal\b",
+                r"\bself[- ]?harm\b",
+                r"\bhurt myself\b",
+                r"\bkill myself\b",
+                r"\bbetter off dead\b",
+                r"\bdon't want to be here\b",
+                r"\bdo not want to be here\b",
+                r"\bi wish i wouldn't wake up\b",
+                r"\bi wish i were dead\b",
+                r"\bend it\b",
+            ],
+        }
+
+        matched_categories = []
+
+        for category, patterns in symptom_patterns.items():
+            for pattern in patterns:
+                if re.search(pattern, text):
+                    matched_categories.append(category)
+                    break
+
+        if matched_categories:
+            self.symptom_discussion.started = True
+            self.symptom_discussion.start_turn = current_turn
+            return True
+
+        # More general backup detection:
+        # This catches natural symptom talk that may not use exact clinical words.
+        experience_patterns = [
+            r"\bi feel\b",
+            r"\bi've been feeling\b",
+            r"\bi have been feeling\b",
+            r"\bi keep feeling\b",
+            r"\bit feels like\b",
+            r"\bi can't\b",
+            r"\bi cannot\b",
+            r"\bi don't feel\b",
+            r"\bi do not feel\b",
+            r"\bi struggle\b",
+            r"\bi'm struggling\b",
+        ]
+
+        distress_patterns = [
+            r"\bhard\b",
+            r"\bheavy\b",
+            r"\bunbearable\b",
+            r"\boverwhelming\b",
+            r"\btoo much\b",
+            r"\bpointless\b",
+            r"\bempty\b",
+            r"\bscary\b",
+            r"\bafraid\b",
+            r"\bexhausting\b",
+            r"\bIrrational\b".lower(),
+        ]
+
+        has_experience_language = any(
+            re.search(pattern, text) for pattern in experience_patterns
+        )
+
+        has_distress_language = any(
+            re.search(pattern, text) for pattern in distress_patterns
+        )
+
+        if has_experience_language and has_distress_language:
+            self.symptom_discussion.started = True
+            self.symptom_discussion.start_turn = current_turn
+            return True
+
+        return False
+
+
+def _format_symptoms(symptoms_raw) -> str:
+    if not symptoms_raw:
+        return ""
+
+    frequency_meanings = {
+        "not at all": (
+            "over the last two weeks, you have not been bothered by this symptom; "
+        ),
+        "several days": (
+            "over the last two weeks, you have been bothered by this symptom on several days; "
+        ),
+        "more than half the days": (
+            "over the last two weeks, you have been bothered by this symptom more than half the days; "
+        ),
+        "nearly every day": (
+            "over the last two weeks, you have been bothered by this symptom nearly every day; "
+        ),
+    }
+
+    symptom_labels = {
+        "lack_of_pleasure": "Little interest or pleasure in doing things",
+        "depressed_mood": "Feeling down, depressed, or hopeless",
+        "sleep_problems": "Sleep problems",
+        "low_energy": "Feeling tired or having little energy",
+        "appetite_changes": "Poor appetite or overeating",
+        "feelings_of_failure_or_guilt": "Feeling bad about yourself, guilty, or like a failure",
+        "concentration_problems": "Trouble concentrating",
+        "psychomotor_changes": "Moving or speaking slowly, or feeling restless",
+        "thoughts_of_death_or_self_harm": "Thoughts that you would be better off dead or of hurting yourself",
+    }
+
+    if isinstance(symptoms_raw, dict):
+        lines = []
+        for key, value in symptoms_raw.items():
+            frequency = str(value).strip().lower()
+
+            label = symptom_labels.get(
+                key,
+                key.replace("_", " ").strip().capitalize()
+            )
+
+            meaning = frequency_meanings.get(
+                frequency,
+                "frequency level not recognized; use common sense to decide how much it should affect you"
+            )
+
+            lines.append(f"- {label}: {frequency} — {meaning}")
+
+        return "\n".join(lines)
+    return str(symptoms_raw).strip()
 
 def build_patient_prior(case_name: str) -> PatientPrior:
     """
@@ -209,6 +522,7 @@ def build_patient_prior(case_name: str) -> PatientPrior:
         relational_pattern=raw.get("relational_pattern", ""),
         transference_expectation=raw.get("transference_expectation", ""),
         resistance_structure=raw.get("resistance_structure", ""),
+        symptoms=_format_symptoms(raw.get("symptoms", "")),
         hazard_profile=hazard,
         unconscious_agenda=agenda,
     )

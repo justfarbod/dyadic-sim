@@ -11,7 +11,20 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, UTC
 from pathlib import Path
+from html import escape
+import re
 
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import cm
+from reportlab.platypus import (
+    SimpleDocTemplate,
+    Paragraph,
+    Spacer,
+    KeepTogether,
+)
 
 SESSIONS_DIR = Path("data/sessions")
 
@@ -27,7 +40,8 @@ class TurnRecord:
     therapist_tokens: int | None
     patient_tokens: int | None
     unconscious_revealed: bool
-    hazard_flags: list[str]
+    symptom_discussion_started: bool = False
+    hazard_flags: list[str] = field(default_factory=list)
     timestamp: str = field(default_factory=lambda: datetime.now(UTC).replace(tzinfo=None).isoformat())
 
     def to_dict(self) -> dict:
@@ -40,18 +54,20 @@ class Session:
     """
 
     def __init__(
-        self,
-        session_id: str,
-        therapist_model: str,
-        patient_model: str,
-        case_name: str,
-        orientation: str,
+            self,
+            session_id: str,
+            therapist_model: str,
+            patient_model: str,
+            case_name: str,
+            orientation: str,
+            patient_symptoms: str = "",
     ):
         self.session_id = session_id
         self.therapist_model = therapist_model
         self.patient_model = patient_model
         self.case_name = case_name
         self.orientation = orientation
+        self.patient_symptoms = patient_symptoms
         self.turn_count = 0
         self.transcript: list[TurnRecord] = []
         self.created_at = datetime.now(UTC).replace(tzinfo=None).isoformat()
@@ -61,6 +77,7 @@ class Session:
 
         self._transcript_path = self.session_dir / "transcript.jsonl"
         self._metadata_path = self.session_dir / "metadata.json"
+        self._pdf_path = self.session_dir / self._build_pdf_filename()
 
     def append_turn(
         self,
@@ -69,18 +86,21 @@ class Session:
         therapist_tokens: int | None = None,
         patient_tokens: int | None = None,
         unconscious_revealed: bool = False,
+        symptom_discussion_started: bool = False,
         hazard_flags: list[str] | None = None,
     ) -> TurnRecord:
         """
         Record a completed turn to the transcript.
 
         Args:
-            therapist_text:      What the therapist said
-            patient_text:        What the patient said
-            therapist_tokens:    Token count for therapist response
-            patient_tokens:      Token count for patient response
-            unconscious_revealed: Whether unconscious agenda was active
-            hazard_flags:        Any hazard signals detected this turn
+            therapist_text:               What the therapist said
+            patient_text:                 What the patient said
+            therapist_tokens:             Token count for therapist response
+            patient_tokens:               Token count for patient response
+            unconscious_revealed:         Whether unconscious agenda was active
+            symptom_discussion_started:   Whether the patient began explicitly
+                                          talking about symptoms on this turn
+            hazard_flags:                 Any hazard signals detected this turn
 
         Returns:
             The TurnRecord appended to the transcript
@@ -95,15 +115,154 @@ class Session:
             therapist_tokens=therapist_tokens,
             patient_tokens=patient_tokens,
             unconscious_revealed=unconscious_revealed,
+            symptom_discussion_started=symptom_discussion_started,
             hazard_flags=hazard_flags or [],
         )
         self.transcript.append(record)
 
         # Append to JSONL file immediately (survive crashes)
-        with open(self._transcript_path, "a") as f:
-            f.write(json.dumps(record.to_dict()) + "\n")
+        with open(self._transcript_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record.to_dict(), ensure_ascii=False) + "\n")
+
+        # Also update the human-readable PDF transcript.
+        self.save_pdf_transcript()
 
         return record
+
+        return record
+
+    def _pdf_safe_text(self, text: str | None) -> str:
+        """
+        Make text safe for ReportLab Paragraphs.
+
+        ReportLab Paragraph uses a small XML-like markup language, so we escape
+        characters such as <, >, and &. We also preserve line breaks.
+        """
+        if not text:
+            return ""
+
+        return escape(str(text)).replace("\n", "<br/>")
+
+    def save_pdf_transcript(self) -> None:
+        """
+        Generate a readable PDF version of the session transcript.
+
+        This rebuilds the PDF from self.transcript each time it is called.
+        That is safer than trying to append directly to an existing PDF.
+        """
+        doc = SimpleDocTemplate(
+            str(self._pdf_path),
+            pagesize=A4,
+            rightMargin=1.7 * cm,
+            leftMargin=1.7 * cm,
+            topMargin=1.5 * cm,
+            bottomMargin=1.5 * cm,
+        )
+
+        styles = getSampleStyleSheet()
+
+        title_style = ParagraphStyle(
+            "TranscriptTitle",
+            parent=styles["Title"],
+            alignment=TA_CENTER,
+            fontSize=18,
+            leading=22,
+            spaceAfter=14,
+        )
+
+        meta_style = ParagraphStyle(
+            "TranscriptMeta",
+            parent=styles["Normal"],
+            fontSize=9,
+            leading=12,
+            textColor=colors.darkgrey,
+            spaceAfter=4,
+        )
+
+        turn_style = ParagraphStyle(
+            "TurnHeading",
+            parent=styles["Heading2"],
+            fontSize=13,
+            leading=16,
+            spaceBefore=12,
+            spaceAfter=6,
+            textColor=colors.HexColor("#333333"),
+        )
+
+        speaker_style = ParagraphStyle(
+            "Speaker",
+            parent=styles["Heading3"],
+            fontSize=11,
+            leading=14,
+            spaceBefore=6,
+            spaceAfter=3,
+            textColor=colors.HexColor("#222222"),
+        )
+
+        body_style = ParagraphStyle(
+            "Body",
+            parent=styles["BodyText"],
+            fontSize=10,
+            leading=14,
+            spaceAfter=8,
+        )
+
+        flag_style = ParagraphStyle(
+            "Flags",
+            parent=styles["Normal"],
+            fontSize=8,
+            leading=11,
+            textColor=colors.HexColor("#666666"),
+            spaceAfter=8,
+        )
+
+        story = []
+
+        story.append(Paragraph("Dyadic Therapy Simulation Transcript", title_style))
+
+        story.append(Paragraph(f"<b>Session ID:</b> {self._pdf_safe_text(self.session_id)}", meta_style))
+        story.append(Paragraph(f"<b>Case:</b> {self._pdf_safe_text(self.case_name)}", meta_style))
+        story.append(Paragraph(f"<b>Orientation:</b> {self._pdf_safe_text(self.orientation)}", meta_style))
+        story.append(Paragraph(f"<b>Therapist model:</b> {self._pdf_safe_text(self.therapist_model)}", meta_style))
+        story.append(Paragraph(f"<b>Patient model:</b> {self._pdf_safe_text(self.patient_model)}", meta_style))
+        story.append(Paragraph(f"<b>Created at:</b> {self._pdf_safe_text(self.created_at)}", meta_style))
+        story.append(Paragraph(f"<b>Total turns:</b> {self.turn_count}", meta_style))
+
+        story.append(Spacer(1, 12))
+
+        if self.patient_symptoms.strip():
+            story.append(Paragraph("Patient Symptom Profile", turn_style))
+            story.append(
+                Paragraph(
+                    self._pdf_safe_text(self.patient_symptoms),
+                    body_style,
+                )
+            )
+            story.append(Spacer(1, 12))
+
+        if not self.transcript:
+            story.append(Paragraph("No turns have been recorded yet.", body_style))
+        else:
+            for record in self.transcript:
+                turn_block = [
+                    Paragraph(f"Turn {record.turn}", turn_style),
+                    Paragraph("Patient", speaker_style),
+                    Paragraph(self._pdf_safe_text(record.patient_text), body_style),
+                    Paragraph("Therapist", speaker_style),
+                    Paragraph(
+                        self._pdf_safe_text(record.therapist_text)
+                        if record.therapist_text
+                        else "<i>No therapist response recorded.</i>",
+                        body_style,
+                    ),
+                ]
+
+                story.append(KeepTogether(turn_block))
+                story.append(Spacer(1, 8))
+
+        doc.build(story)
+
+
 
     def save_metadata(self, extra: dict | None = None) -> None:
         """Write / update session metadata."""
@@ -113,14 +272,18 @@ class Session:
             "patient_model": self.patient_model,
             "case_name": self.case_name,
             "orientation": self.orientation,
+            "patient_symptoms": self.patient_symptoms,
             "turn_count": self.turn_count,
             "created_at": self.created_at,
             "updated_at": datetime.now(UTC).replace(tzinfo=None).isoformat(),
+            "pdf_transcript_path": str(self._pdf_path),
         }
+
         if extra:
             meta.update(extra)
-        with open(self._metadata_path, "w") as f:
-            json.dump(meta, f, indent=2)
+
+        with open(self._metadata_path, "w", encoding="utf-8") as f:
+            json.dump(meta, f, indent=2, ensure_ascii=False)
 
     def get_history(self) -> list[tuple[str, str]]:
         """
@@ -141,22 +304,50 @@ class Session:
             parts.append(f"Therapist: {r.therapist_text}")
         return "\n".join(parts)
 
+    def _safe_filename_part(self, value: str) -> str:
+        """
+        Convert text into a safe filename part.
+
+        Example:
+            llama3.1 -> llama3_1
+            afraid/of/dogs -> afraid_of_dogs
+        """
+        value = str(value).strip().lower()
+        value = re.sub(r"[^a-zA-Z0-9]+", "_", value)
+        value = value.strip("_")
+        return value or "unknown"
+
+    def _build_pdf_filename(self) -> str:
+        """
+        Build a readable PDF filename for this session transcript.
+        """
+        case = self._safe_filename_part(self.case_name)
+        orientation = self._safe_filename_part(self.orientation)
+        therapist = self._safe_filename_part(self.therapist_model)
+        patient = self._safe_filename_part(self.patient_model)
+
+        return f"{case}_{orientation}_{therapist}_vs_{patient}_transcript.pdf"
+
 
 def new_session(
     therapist_model: str,
     patient_model: str,
     case_name: str,
     orientation: str,
+    patient_symptoms: str = "",
 ) -> Session:
     """Create a new session with a fresh ID."""
     session_id = f"session_{datetime.now(UTC).replace(tzinfo=None).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
+
     session = Session(
         session_id=session_id,
         therapist_model=therapist_model,
         patient_model=patient_model,
         case_name=case_name,
         orientation=orientation,
+        patient_symptoms=patient_symptoms,
     )
+
     session.save_metadata()
     return session
 
@@ -180,6 +371,7 @@ def resume_session(session_id: str) -> Session:
         patient_model=meta["patient_model"],
         case_name=meta["case_name"],
         orientation=meta["orientation"],
+        patient_symptoms=meta.get("patient_symptoms", ""),
     )
 
     # Replay transcript
@@ -196,3 +388,4 @@ def resume_session(session_id: str) -> Session:
 
     session.created_at = meta.get("created_at", session.created_at)
     return session
+

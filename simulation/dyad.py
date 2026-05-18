@@ -1,20 +1,3 @@
-"""
-simulation/dyad.py
-
-This dyad orchestrator runs the two-agent exchange turn by turn.
-
-This is the heart of the simulation. Each turn:
-  1. Build therapist context (prior + state + history)
-  2. Get therapist response
-  3. Check hazard monitor
-  4. Check unconscious agenda reveal trigger
-  5. Build patient context (prior + state + history + optional unconscious)
-  6. Get patient response
-  7. Compress both states (self-reflection calls)
-  8. Save snapshots
-  9. Record turn to session transcript
-"""
-
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
@@ -60,12 +43,17 @@ class Dyad:
         # Session (new or resumed)
         if session_id:
             self.session = resume_session(session_id)
+
+            if not getattr(self.session, "patient_symptoms", ""):
+                self.session.patient_symptoms = self.patient_prior.symptoms
+                self.session.save_metadata()
         else:
             self.session = new_session(
                 therapist_model=therapist_model,
                 patient_model=patient_model,
                 case_name=case_name,
                 orientation=orientation,
+                patient_symptoms=self.patient_prior.symptoms,
             )
 
         # Initialise or restore agent states
@@ -86,16 +74,6 @@ class Dyad:
     def run(self, n_turns: int = 10, max_tokens: int = 300) -> Session:
         """
         Run the dyadic exchange for n_turns turns.
-
-        For now, the session always starts with the patient speaking first
-        (they are the one who came seeking something).
-
-        Args:
-            n_turns:    Number of full turns (patient + therapist = 1 turn)
-            max_tokens: Max tokens per response
-
-        Returns:
-            Completed Session object
         """
         console.rule(f"[bold]Session: {self.session.session_id}[/bold]")
         console.print(
@@ -106,7 +84,6 @@ class Dyad:
         )
         console.rule()
 
-        # Opening patient turn: patient speaks first
         opening_prompt = (
             "You have just arrived for a therapy session. "
             "The therapist is present and waiting. Say what brings you here."
@@ -120,7 +97,6 @@ class Dyad:
 
             # --- Patient turn ---
 
-            # Check unconscious reveal trigger
             unconscious_active = self.patient_prior.check_reveal_trigger(
                 transcript_tail=tail,
                 current_turn=turn_num,
@@ -131,7 +107,6 @@ class Dyad:
                 )
                 self._revealed_logged = True
 
-            # First turn: patient opens; subsequent turns: respond to therapist
             if turn_num == 1:
                 latest_therapist = opening_prompt
             else:
@@ -152,6 +127,16 @@ class Dyad:
             )
             patient_text = patient_response.content.strip()
 
+            symptom_discussion_started = self.patient_prior.check_symptom_discussion(
+                patient_text=patient_text,
+                current_turn=turn_num,
+            )
+            if symptom_discussion_started:
+                console.print(
+                    "[bold magenta]Patient began talking explicitly about symptoms[/bold magenta]"
+                )
+                self.patient_prior.symptom_discussion.started = False
+
             _print_turn("Patient", patient_text, "magenta")
 
             # --- Hazard check ---
@@ -169,13 +154,13 @@ class Dyad:
                         border_style="red",
                     )
                 )
-                # Record the crisis turn before breaking
                 self.session.append_turn(
                     therapist_text="",
                     patient_text=patient_text,
                     therapist_tokens=None,
                     patient_tokens=patient_response.output_tokens,
                     unconscious_revealed=unconscious_active,
+                    symptom_discussion_started=symptom_discussion_started,
                     hazard_flags=["crisis"],
                 )
                 save_state_snapshot(self.patient_state, self.session.session_dir, turn_num)
@@ -237,6 +222,7 @@ class Dyad:
                 therapist_tokens=therapist_response.output_tokens,
                 patient_tokens=patient_response.output_tokens,
                 unconscious_revealed=unconscious_active,
+                symptom_discussion_started=symptom_discussion_started,
                 hazard_flags=hazard_flags,
             )
 
