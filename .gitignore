@@ -4,6 +4,9 @@
 # JetBrains
 .idea/
 
+#generated yamls for testing
+config/priors/patient/cases/batch_*.yaml
+
 # uv / python
 .venv/
 __pycache__/
