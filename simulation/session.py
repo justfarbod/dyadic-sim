@@ -122,6 +122,22 @@ class Session:
         with open(self._metadata_path, "w") as f:
             json.dump(meta, f, indent=2)
 
+    def update_last_turn(self, **kwargs) -> None:
+        """
+        Update fields on the last recorded turn and rewrite the JSONL file.
+        Used to fill in the therapist response after a crisis-paused turn.
+        """
+        if not self.transcript:
+            return
+        last = self.transcript[-1]
+        for key, value in kwargs.items():
+            if hasattr(last, key):
+                setattr(last, key, value)
+        # Rewrite full transcript (file is small)
+        with open(self._transcript_path, "w") as f:
+            for record in self.transcript:
+                f.write(json.dumps(record.to_dict()) + "\n")
+
     def get_history(self) -> list[tuple[str, str]]:
         """
         Return transcript as list of (patient_text, therapist_text) pairs.
