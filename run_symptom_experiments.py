@@ -52,10 +52,12 @@ def build_no_symptoms_case(base_case: dict) -> dict:
     return case_data
 
 
-def build_single_symptom_case(base_case: dict, active_symptom: str) -> dict:
+def build_single_symptom_case(
+    base_case: dict, active_symptom: str, active_frequency: str = "nearly every day"
+) -> dict:
     case_data = copy.deepcopy(base_case)
     case_data["symptoms"] = {
-        key: ("nearly every day" if key == active_symptom else "not at all")
+        key: (active_frequency if key == active_symptom else "not at all")
         for key in SYMPTOM_KEYS
     }
     return case_data
@@ -103,6 +105,25 @@ def main() -> None:
     )
     parser.add_argument("--therapist", required=True, help="Therapist model name")
     parser.add_argument("--patient", required=True, help="Patient model name")
+    parser.add_argument(
+        "--case",
+        default=BASE_CASE_NAME,
+        help=f"Base patient case to inject symptoms into (default: {BASE_CASE_NAME})",
+    )
+    parser.add_argument(
+        "--symptoms",
+        default=None,
+        help=(
+            "Comma-separated subset of symptom keys to run (default: all 9). "
+            f"Valid: {','.join(SYMPTOM_KEYS)}"
+        ),
+    )
+    parser.add_argument(
+        "--frequency",
+        default="nearly every day",
+        choices=["several days", "more than half the days", "nearly every day"],
+        help="PHQ-9 frequency anchor for the active symptom (default: nearly every day)",
+    )
     parser.add_argument("--orientation", default="cbt", help="Therapist orientation")
     parser.add_argument("--turns", type=int, default=10, help="Turns per run")
     parser.add_argument("--max-tokens", type=int, default=300, help="Max tokens per response")
@@ -125,12 +146,20 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    base_case = load_case(BASE_CASE_NAME)
+    if args.symptoms:
+        symptom_keys = [s.strip() for s in args.symptoms.split(",") if s.strip()]
+        invalid = [s for s in symptom_keys if s not in SYMPTOM_KEYS]
+        if invalid:
+            raise ValueError(f"Unknown symptom key(s): {invalid}. Valid: {SYMPTOM_KEYS}")
+    else:
+        symptom_keys = SYMPTOM_KEYS
+
+    base_case = load_case(args.case)
     generated_case_paths: list[Path] = []
 
     try:
         for i in range(1, args.repeats + 1):
-            case_name = f"{args.prefix}_{BASE_CASE_NAME}_no_symptoms_run_{i}"
+            case_name = f"{args.prefix}_{args.case}_no_symptoms_run_{i}"
             case_data = build_no_symptoms_case(base_case)
             generated_case_paths.append(write_case(case_name, case_data))
 
@@ -144,10 +173,10 @@ def main() -> None:
                 no_compress=args.no_compress,
             )
 
-        for symptom_key in SYMPTOM_KEYS:
+        for symptom_key in symptom_keys:
             for i in range(1, args.repeats + 1):
-                case_name = f"{args.prefix}_{BASE_CASE_NAME}_{symptom_key}_run_{i}"
-                case_data = build_single_symptom_case(base_case, symptom_key)
+                case_name = f"{args.prefix}_{args.case}_{symptom_key}_run_{i}"
+                case_data = build_single_symptom_case(base_case, symptom_key, args.frequency)
                 generated_case_paths.append(write_case(case_name, case_data))
 
                 run_session(

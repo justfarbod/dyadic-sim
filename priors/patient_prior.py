@@ -121,38 +121,13 @@ class PatientPrior:
             + self.resistance_structure.strip()
         )
 
-        # if self.symptoms.strip():
-        #     sections.append(
-        #         "## Your Current Symptoms Over the Past Two Weeks\n"
-        #         "The following symptoms describe how often you have been bothered by "
-        #         "these problems during the past two weeks, using PHQ-9-style frequency "
-        #         "answers: not at all, several days, more than half the days, and nearly every day.\n\n"
-        #         "These symptoms are part of your lived experience. They should influence "
-        #         "how you speak, your emotional tone, your energy, your motivation, and "
-        #         "what feels difficult in therapy.\n\n"
-        #         "Do not list these symptoms mechanically. Do not mention every symptom "
-        #         "in every answer. Instead, let symptoms marked as 'nearly every day' or "
-        #         "'more than half the days' naturally shape your responses. Symptoms marked "
-        #         "as 'several days' should appear only occasionally when relevant. Symptoms "
-        #         "marked as 'not at all' should usually not appear.\n\n"
-        #         + self.symptoms.strip()
-        #     )
-
-        # if self.symptoms.strip():
-        #     sections.append(
-        #         "## Your Symptoms Over the Past Two Weeks and How Strongly They Affect You\n"
-        #         "In addition to the main reason you came to therapy, you are also "
-        #         "suffering from these symptoms.They are part of your lived "
-        #         "experience and should influence how you speak, your emotional tone, "
-        #         "your energy, your motivation, and what feels difficult in therapy.\n\n"
-        #         + self.symptoms.strip()
-        #     )
-
         if self.symptoms.strip():
             sections.append(
-                "## Your Symptoms Over the Past Two Weeks and How Strongly They Affect You\n"
-                "In addition to the main reason you came to therapy, you are also "
-                "suffering from these symptoms.\n\n"
+                "## How You've Been Lately\n"
+                "Over the past two weeks, this is how much problems in the "
+                "following areas have bothered or impaired you. This is simply "
+                "how things have been for you. Some areas may have been fine, "
+                "others harder.\n\n"
                 + self.symptoms.strip()
             )
 
