@@ -145,6 +145,13 @@ dyadic-sim/
 |   |-- unconscious_emergence.py # special: did the hidden agenda surface?
 |   |-- frame_integrity.py       # special: did ethical priors hold under pressure?
 |   |-- report.py                # assembles full session report
+|   |-- validation/              # manipulation-validity checks (see Validation Analyses)
+|       |-- paths.py             # canonical data/ input + output locations
+|       |-- sessions.py          # shared session loader
+|       |-- symptom_embed.py     # embedding manipulation check (target_z)
+|       |-- compare_baseline.py  # pilot vs baseline delta + figure
+|
+|-- run_symptom_experiments.py   # batch-generate symptom-isolated sessions
 |
 |-- data/
 |   |-- sessions/
@@ -283,6 +290,60 @@ Stage 2: different local models
   uv run python run.py --therapist mistral-nemo --patient llama3.1 --case afraid_of_dogs
   Goal: does genuine alterity change the dynamics?
 ```
+
+---
+
+## Validation Analyses
+
+Beyond the six personhood markers, `analysis/validation/` holds checks on the
+**construct validity of experimental manipulations** — currently the symptom-injection
+study, which asks whether a PHQ-9 depression symptom written into the patient prior is
+actually *expressed* by the patient agent (rather than silently ignored).
+
+Analysis data lives under `data/` in two buckets (both gitignored; regenerable):
+
+- `data/ext-session-logs/` — external / imported session archives (read-only inputs)
+- `data/results/` — local analysis outputs (CSVs, figures, frozen baselines)
+
+Paths are centralised in `analysis/validation/paths.py`; run the scripts from the repo
+root with `PYTHONPATH=.`.
+
+**1. Generate symptom-isolated sessions.** One PHQ-9 symptom is set to a frequency
+anchor, the other eight to "not at all":
+
+```bash
+uv run python run_symptom_experiments.py \
+  --therapist llama3.1 --patient llama3.1 \
+  --case empty_and_invisible \
+  --symptoms depressed_mood,psychomotor_changes,sleep_problems \
+  --frequency "nearly every day" --repeats 20 --prefix pilot1
+```
+
+Sessions land in `data/sessions/` tagged `pilot1_<case>_<symptom>_run_<n>`.
+
+**2. Run the embedding manipulation check.** Per session, cosine-similarity of the
+patient's speech to each PHQ-9 reference, z-scored within session
+(`target_z > 0` = the patient leans toward the injected symptom; `~0` = chance):
+
+```bash
+PYTHONPATH=. python analysis/validation/symptom_embed.py \
+  --sessions 'data/sessions/*' --prefix pilot1 \
+  --out-dir data/results/pilot1
+```
+
+**3. Compare against a baseline** — prints a delta table and writes a side-by-side
+figure with 95% CIs:
+
+```bash
+PYTHONPATH=. python analysis/validation/compare_baseline.py \
+  --baseline data/results/baseline_v0/symptom_embed_long.csv \
+  --pilot    data/results/pilot1/symptom_embed_long.csv \
+  --match-case --out-dir data/results/pilot1
+```
+
+Companion scripts in the package: `symptom_manifest.py` (transparent keyword/lexicon
+check), `symptom_embed_bycase.py` (split by patient case), and `symptom_embed_robust.py`
+(robustness to the reference wording).
 
 ---
 
