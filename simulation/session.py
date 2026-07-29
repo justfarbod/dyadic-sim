@@ -61,6 +61,10 @@ class Session:
             case_name: str,
             orientation: str,
             patient_symptoms: str = "",
+            patient_symptom_levels: dict[str, str] | None = None,
+            patient_id: str | None = None,
+            conversation_language: str = "en",
+            initial_patient_prompt: str | None = None,
     ):
         self.session_id = session_id
         self.therapist_model = therapist_model
@@ -68,6 +72,10 @@ class Session:
         self.case_name = case_name
         self.orientation = orientation
         self.patient_symptoms = patient_symptoms
+        self.patient_symptom_levels = patient_symptom_levels or {}
+        self.patient_id = patient_id
+        self.conversation_language = conversation_language
+        self.initial_patient_prompt = initial_patient_prompt
         self.turn_count = 0
         self.transcript: list[TurnRecord] = []
         self.created_at = datetime.now(UTC).replace(tzinfo=None).isoformat()
@@ -267,12 +275,17 @@ class Session:
     def save_metadata(self, extra: dict | None = None) -> None:
         """Write / update session metadata."""
         meta = {
+            "metadata_schema_version": 2,
             "session_id": self.session_id,
+            "patient_id": self.patient_id,
             "therapist_model": self.therapist_model,
             "patient_model": self.patient_model,
             "case_name": self.case_name,
             "orientation": self.orientation,
             "patient_symptoms": self.patient_symptoms,
+            "patient_symptom_levels": self.patient_symptom_levels,
+            "conversation_language": self.conversation_language,
+            "initial_patient_prompt": self.initial_patient_prompt,
             "turn_count": self.turn_count,
             "created_at": self.created_at,
             "updated_at": datetime.now(UTC).replace(tzinfo=None).isoformat(),
@@ -335,6 +348,10 @@ def new_session(
     case_name: str,
     orientation: str,
     patient_symptoms: str = "",
+    patient_symptom_levels: dict[str, str] | None = None,
+    patient_id: str | None = None,
+    conversation_language: str = "en",
+    initial_patient_prompt: str | None = None,
 ) -> Session:
     """Create a new session with a fresh ID."""
     session_id = f"session_{datetime.now(UTC).replace(tzinfo=None).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
@@ -346,6 +363,10 @@ def new_session(
         case_name=case_name,
         orientation=orientation,
         patient_symptoms=patient_symptoms,
+        patient_symptom_levels=patient_symptom_levels,
+        patient_id=patient_id,
+        conversation_language=conversation_language,
+        initial_patient_prompt=initial_patient_prompt,
     )
 
     session.save_metadata()
@@ -372,6 +393,10 @@ def resume_session(session_id: str) -> Session:
         case_name=meta["case_name"],
         orientation=meta["orientation"],
         patient_symptoms=meta.get("patient_symptoms", ""),
+        patient_symptom_levels=meta.get("patient_symptom_levels", {}),
+        patient_id=meta.get("patient_id"),
+        conversation_language=meta.get("conversation_language", "en"),
+        initial_patient_prompt=meta.get("initial_patient_prompt"),
     )
 
     # Replay transcript

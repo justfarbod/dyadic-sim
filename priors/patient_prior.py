@@ -63,6 +63,7 @@ class PatientPrior:
     transference_expectation: str = ""
     resistance_structure: str = ""
     symptoms: str = ""
+    symptom_levels: dict[str, str] = field(default_factory=dict)
 
     # Used by hazard_monitor.py, not in patient prompt
     hazard_profile: HazardProfile = field(default_factory=HazardProfile)
@@ -490,6 +491,13 @@ def build_patient_prior(case_name: str) -> PatientPrior:
         reveal_turn_minimum=agenda_raw.get("reveal_turn_minimum", 6),
     )
 
+    symptoms_raw = raw.get("symptoms", {})
+    symptom_levels = (
+        {str(key): str(value) for key, value in symptoms_raw.items()}
+        if isinstance(symptoms_raw, dict)
+        else {}
+    )
+
     return PatientPrior(
         case_name=case_name,
         presenting_complaint=raw.get("presenting_complaint", ""),
@@ -497,7 +505,8 @@ def build_patient_prior(case_name: str) -> PatientPrior:
         relational_pattern=raw.get("relational_pattern", ""),
         transference_expectation=raw.get("transference_expectation", ""),
         resistance_structure=raw.get("resistance_structure", ""),
-        symptoms=_format_symptoms(raw.get("symptoms", "")),
+        symptoms=_format_symptoms(symptoms_raw),
+        symptom_levels=symptom_levels,
         hazard_profile=hazard,
         unconscious_agenda=agenda,
     )

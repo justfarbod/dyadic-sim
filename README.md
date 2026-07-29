@@ -345,6 +345,52 @@ Companion scripts in the package: `symptom_manifest.py` (transparent keyword/lex
 check), `symptom_embed_bycase.py` (split by patient case), and `symptom_embed_robust.py`
 (robustness to the reference wording).
 
+### MADRS-BERT session scoring
+
+`evaluate_session_symptoms.py` produces research-only MADRS proxy scores from saved
+sessions. It pairs each patient response with the preceding therapist message,
+filters turn-topic combinations for relevance, translates accepted English pairs
+to German, scores them with `webesama/MADRS-BERT`, and selects the maximum accepted
+score for each MADRS topic. PHQ prior anchors and MADRS scores are reported
+separately and must not be interpreted as the same scale.
+
+Score one session in PowerShell:
+
+```powershell
+uv run python .\evaluate_session_symptoms.py `
+  --session-path .\data\sessions\session_001 `
+  --experiment-name pilot1 `
+  --output-dir .\data\results\symptom_scores
+```
+
+Score all saved sessions:
+
+```powershell
+uv run python .\evaluate_session_symptoms.py `
+  --sessions-dir .\data\sessions `
+  --experiment-name pilot1 `
+  --output-dir .\data\results\symptom_scores
+```
+
+This creates:
+
+```text
+data/results/symptom_scores/pilot1/
+  <session_id>/
+    symptom_scores.json
+    turn_scores.csv
+  sessions_summary.csv
+  errors.jsonl  # only when a session fails
+```
+
+Use a different `--experiment-name` for each experiment. Names may contain
+letters, numbers, dots, underscores, and hyphens. If the option is omitted,
+the per-session folders are written directly under `--output-dir`.
+
+The first run downloads the German translation checkpoint and MADRS-BERT. Add
+`--device cpu` to force CPU execution or `--relevance-mode rules` to use only
+transparent relevance rules without the semantic-similarity fallback.
+
 ---
 
 ## Theoretical Background

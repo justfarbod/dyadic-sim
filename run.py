@@ -39,6 +39,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--patient", type=str, help="Patient model name (e.g. llama3.1)")
     parser.add_argument("--case", type=str, default="afraid_of_dogs", help="Patient case name")
     parser.add_argument(
+        "--patient-id",
+        type=str,
+        default=None,
+        help="Optional synthetic patient identifier saved in session metadata",
+    )
+    parser.add_argument(
         "--orientation",
         type=str,
         default="cbt",
@@ -115,6 +121,7 @@ def main() -> None:
             orientation=meta.get("orientation", "psychodynamic"),
             session_id=session_id,
             compress_states=not args.no_compress,
+            patient_id=args.patient_id,
         )
         dyad.run(n_turns=args.additional_turns, max_tokens=args.max_tokens)
         return
@@ -140,6 +147,7 @@ def main() -> None:
         case_name=args.case,
         orientation=args.orientation,
         compress_states=not args.no_compress,
+        patient_id=args.patient_id,
     )
 
     session = dyad.run(n_turns=args.turns, max_tokens=args.max_tokens)

@@ -12,6 +12,7 @@ from priors.patient_prior import PatientPrior, build_patient_prior
 from simulation.session import Session, new_session, resume_session
 from simulation.turn_manager import build_therapist_context, build_patient_context
 from simulation.hazard_monitor import HazardMonitor
+from symptom_scoring.config import KNOWN_OPENING_PROMPT
 
 console = Console()
 
@@ -29,6 +30,7 @@ class Dyad:
         orientation: str = "psychodynamic",
         session_id: str | None = None,
         compress_states: bool = True,
+        patient_id: str | None = None,
     ):
         self.compress_states = compress_states
 
@@ -44,8 +46,20 @@ class Dyad:
         if session_id:
             self.session = resume_session(session_id)
 
+            metadata_changed = False
             if not getattr(self.session, "patient_symptoms", ""):
                 self.session.patient_symptoms = self.patient_prior.symptoms
+                metadata_changed = True
+            if not getattr(self.session, "patient_symptom_levels", {}):
+                self.session.patient_symptom_levels = self.patient_prior.symptom_levels
+                metadata_changed = True
+            if not getattr(self.session, "initial_patient_prompt", None):
+                self.session.initial_patient_prompt = KNOWN_OPENING_PROMPT
+                metadata_changed = True
+            if patient_id is not None and self.session.patient_id != patient_id:
+                self.session.patient_id = patient_id
+                metadata_changed = True
+            if metadata_changed:
                 self.session.save_metadata()
         else:
             self.session = new_session(
@@ -54,6 +68,10 @@ class Dyad:
                 case_name=case_name,
                 orientation=orientation,
                 patient_symptoms=self.patient_prior.symptoms,
+                patient_symptom_levels=self.patient_prior.symptom_levels,
+                patient_id=patient_id,
+                conversation_language="en",
+                initial_patient_prompt=KNOWN_OPENING_PROMPT,
             )
 
         # Initialise or restore agent states
@@ -84,10 +102,7 @@ class Dyad:
         )
         console.rule()
 
-        opening_prompt = (
-            "You have just arrived for a therapy session. "
-            "The therapist is present and waiting. Say what brings you here."
-        )
+        opening_prompt = KNOWN_OPENING_PROMPT
 
         for turn_num in range(1, n_turns + 1):
             console.print(f"\n[dim]-- Turn {turn_num} --[/dim]")

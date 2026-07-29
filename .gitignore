@@ -19,6 +19,8 @@ data/sessions/
 data/reports/
 manuscript/
 
+
+
 # external / imported session logs (heavy + binary; provenance frozen in
 # data/results/baseline_v0/BASELINE.md).
 data/ext-session-logs/_extracted/
@@ -26,6 +28,8 @@ data/ext-session-logs/*.zip
 
 # local analysis outputs (regenerable from analysis/validation/ + external data)
 data/results/
+tests/
+
 
 # streamlit
 .streamlit/
