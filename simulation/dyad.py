@@ -104,7 +104,14 @@ class Dyad:
 
         opening_prompt = KNOWN_OPENING_PROMPT
 
-        for turn_num in range(1, n_turns + 1):
+        start_turn = self.session.turn_count + 1
+
+        # If resuming after a crisis pause, the last turn has an empty
+        # therapist response.  Run a therapist-only half-turn first so
+        # the therapist can respond to the crisis utterance.
+        self._complete_crisis_half_turn(max_tokens)
+
+        for turn_num in range(start_turn, start_turn + n_turns):
             console.print(f"\n[dim]-- Turn {turn_num} --[/dim]")
 
             history = self.session.get_history()
@@ -122,7 +129,8 @@ class Dyad:
                 )
                 self._revealed_logged = True
 
-            if turn_num == 1:
+            # First turn: patient opens; subsequent turns: respond to therapist
+            if not history:
                 latest_therapist = opening_prompt
             else:
                 latest_therapist = history[-1][1] if history else ""
@@ -244,6 +252,63 @@ class Dyad:
         console.rule("[bold]Session complete[/bold]")
         self.session.save_metadata({"hazard_summary": self.hazard_monitor.summary()})
         return self.session
+
+    def _complete_crisis_half_turn(self, max_tokens: int) -> None:
+        """
+        If the last recorded turn has an empty therapist response (crisis
+        pause), run the therapist side now so the session can continue.
+        """
+        if not self.session.transcript:
+            return
+        last = self.session.transcript[-1]
+        if last.therapist_text:
+            return
+
+        console.print("\n[bold yellow]Completing therapist response for crisis turn...[/bold yellow]")
+
+        history = self.session.get_history()
+        patient_text = last.patient_text
+
+        therapist_system, therapist_messages = build_therapist_context(
+            prior=self.therapist_prior,
+            state=self.therapist_state,
+            history=history[:-1],  # exclude the incomplete turn
+            latest_patient_turn=patient_text,
+        )
+
+        therapist_response = self.therapist_agent.complete(
+            system_prompt=therapist_system,
+            messages=therapist_messages,
+            max_tokens=max_tokens,
+        )
+        therapist_text = therapist_response.content.strip()
+
+        _print_turn("Therapist", therapist_text, "cyan")
+
+        # Compress states for this turn
+        if self.compress_states:
+            self.therapist_state = compress_turn(
+                agent=self.therapist_agent,
+                state=self.therapist_state,
+                own_turn=therapist_text,
+                other_turn=patient_text,
+                turn_number=last.turn,
+            )
+            self.patient_state = compress_turn(
+                agent=self.patient_agent,
+                state=self.patient_state,
+                own_turn=patient_text,
+                other_turn=therapist_text,
+                turn_number=last.turn,
+            )
+
+        # Update the transcript record and save
+        self.session.update_last_turn(
+            therapist_text=therapist_text,
+            therapist_tokens=therapist_response.output_tokens,
+        )
+        save_state_snapshot(self.therapist_state, self.session.session_dir, last.turn)
+        save_state_snapshot(self.patient_state, self.session.session_dir, last.turn)
 
     def _init_state(self, role: str, model: str, prior_text: str) -> AgentState:
         """

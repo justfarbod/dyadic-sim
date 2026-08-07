@@ -17,6 +17,7 @@ __pycache__/
 # data outputs
 data/sessions/
 data/reports/
+data/ext-session-logs/
 manuscript/
 
 
