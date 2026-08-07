@@ -27,7 +27,7 @@ def write_turn_csv(result: dict[str, Any], path: str | Path) -> Path:
         "session_id",
         "turn_index",
         "symptom",
-        "madrs_topic",
+        "topic",
         "relevant",
         "accepted_for_scoring",
         "relevance_confidence",
@@ -58,17 +58,17 @@ def write_turn_csv(result: dict[str, Any], path: str | Path) -> Path:
 def write_directory_summary(results: list[dict[str, Any]], path: str | Path) -> Path:
     output = Path(path)
     output.parent.mkdir(parents=True, exist_ok=True)
-    fields = ["session_id", "patient_id", "madrs_topic", "raw_score", "rounded_score", "source_turn"]
+    fields = ["session_id", "patient_id", "topic", "raw_score", "rounded_score", "source_turn"]
     with output.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fields)
         writer.writeheader()
         for result in results:
-            for topic, aggregate in result["madrs_topics"].items():
+            for topic, aggregate in result["topics"].items():
                 writer.writerow(
                     {
                         "session_id": result.get("session_id"),
                         "patient_id": result.get("patient_id"),
-                        "madrs_topic": topic,
+                        "topic": topic,
                         "raw_score": aggregate.get("raw_session_score"),
                         "rounded_score": aggregate.get("rounded_session_score"),
                         "source_turn": aggregate.get("source_turn"),

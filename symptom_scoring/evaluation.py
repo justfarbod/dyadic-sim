@@ -1,15 +1,12 @@
-"""Compare prior intent, therapist coverage, expression, and MADRS proxies."""
+"""Compare prior intent, therapist coverage, expression, and rater output."""
 
 from __future__ import annotations
 
 import re
 
-from symptom_scoring.config import (
-    FREQUENCY_VALUES,
-    MADRS_RELEVANCE_PATTERNS,
-    PHQ_MAPPING_QUALITY,
-    PHQ_TO_MADRS,
-)
+from symptom_scoring.config import FREQUENCY_VALUES
+from symptom_scoring.instrument import Instrument
+from symptom_scoring.instruments import DEFAULT_INSTRUMENT
 from symptom_scoring.types import TurnPair, TurnTopicResult
 
 
@@ -19,9 +16,11 @@ def compare_prior_expression_prediction(
     pairs: list[TurnPair],
     turn_results: list[TurnTopicResult],
     phq_results: dict[str, dict],
+    instrument: Instrument = DEFAULT_INSTRUMENT,
 ) -> dict[str, dict]:
+    prediction_instrument = f"{instrument.name} proxy"
     comparisons: dict[str, dict] = {}
-    for symptom, topic in PHQ_TO_MADRS.items():
+    for symptom, topic in instrument.prior_topic_map.items():
         frequency = prior_levels.get(symptom)
         frequency_value = FREQUENCY_VALUES.get(str(frequency).casefold()) if frequency else None
 
@@ -36,16 +35,16 @@ def compare_prior_expression_prediction(
                 "transcript_expression": {"expressed": None, "relevant_patient_turns": []},
                 "therapist_coverage": {"covered": None, "turns": []},
                 "prediction": {
-                    "instrument": "MADRS proxy",
+                    "instrument": prediction_instrument,
                     "raw_score": None,
                 },
                 "classification": "not_mappable",
                 "scale_comparison_valid": False,
-                "mapping_quality": PHQ_MAPPING_QUALITY[symptom],
+                "mapping_quality": instrument.prior_mapping_quality[symptom],
             }
             continue
 
-        pattern = re.compile(MADRS_RELEVANCE_PATTERNS[topic], re.IGNORECASE)
+        pattern = re.compile(instrument.relevance_patterns[topic], re.IGNORECASE)
         coverage_turns = sorted(
             {
                 pair.turn_index
@@ -57,7 +56,7 @@ def compare_prior_expression_prediction(
             {
                 result.turn_index
                 for result in turn_results
-                if result.madrs_topic == topic and result.accepted_for_scoring
+                if result.topic == topic and result.accepted_for_scoring
             }
         )
         prediction = phq_results[symptom]
@@ -90,13 +89,13 @@ def compare_prior_expression_prediction(
                 "turns": coverage_turns,
             },
             "prediction": {
-                "instrument": "MADRS proxy",
+                "instrument": prediction_instrument,
                 "raw_score": prediction["raw_session_score"],
                 "rounded_score": prediction["rounded_session_score"],
             },
             "classification": classification,
             "scale_comparison_valid": False,
-            "mapping_quality": PHQ_MAPPING_QUALITY[symptom],
+            "mapping_quality": instrument.prior_mapping_quality[symptom],
         }
     return comparisons
 

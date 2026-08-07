@@ -1,23 +1,24 @@
-"""Coordinate relevance, translation, formatting, and MADRS-BERT scoring."""
+"""Coordinate relevance, translation, formatting, and severity rating."""
 
 from __future__ import annotations
 
-from symptom_scoring.config import PHQ_TO_MADRS
+from symptom_scoring.instrument import Instrument
+from symptom_scoring.instruments import DEFAULT_INSTRUMENT
 from symptom_scoring.types import TurnPair, TurnTopicResult
 
 
-_TOPIC_TO_PHQ = {
-    topic: symptom
-    for symptom, topic in PHQ_TO_MADRS.items()
-    if topic is not None
-}
-
-
 class TurnScorer:
-    def __init__(self, relevance_detector, translator, regressor):
+    def __init__(
+        self,
+        relevance_detector,
+        translator,
+        regressor,
+        instrument: Instrument = DEFAULT_INSTRUMENT,
+    ):
         self.relevance_detector = relevance_detector
         self.translator = translator
         self.regressor = regressor
+        self.instrument = instrument
 
     def score_session(self, pairs: list[TurnPair]) -> list[TurnTopicResult]:
         relevance_results = self.relevance_detector.detect_batch(pairs)
@@ -41,7 +42,7 @@ class TurnScorer:
         for relevance in accepted:
             pair = pair_by_turn[relevance.turn_index]
             model_input, compacted = self.regressor.prepare_input(
-                relevance.madrs_topic,
+                relevance.topic,
                 translations[pair.therapist_text],
                 translations[pair.patient_text],
                 (
@@ -56,7 +57,7 @@ class TurnScorer:
                 ),
                 translations.get(relevance.evidence) if relevance.evidence else None,
             )
-            job_id = f"{relevance.turn_index}:{relevance.madrs_topic}"
+            job_id = f"{relevance.turn_index}:{relevance.topic}"
             jobs.append((job_id, model_input))
             job_details[job_id] = (model_input, compacted)
 
@@ -64,14 +65,14 @@ class TurnScorer:
         results: list[TurnTopicResult] = []
         for relevance in relevance_results:
             pair = pair_by_turn[relevance.turn_index]
-            job_id = f"{relevance.turn_index}:{relevance.madrs_topic}"
+            job_id = f"{relevance.turn_index}:{relevance.topic}"
             prediction = predictions.get(job_id)
             model_input, compacted = job_details.get(job_id, (None, False))
             results.append(
                 TurnTopicResult(
                     turn_index=relevance.turn_index,
-                    symptom=_TOPIC_TO_PHQ.get(relevance.madrs_topic),
-                    madrs_topic=relevance.madrs_topic,
+                    symptom=self.instrument.topic_to_prior_symptom.get(relevance.topic),
+                    topic=relevance.topic,
                     relevant=relevance.relevant,
                     accepted_for_scoring=bool(prediction),
                     relevance_confidence=relevance.relevance_confidence,

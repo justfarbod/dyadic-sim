@@ -34,15 +34,19 @@ class SymptomScoringPipeline:
         regressor=None,
     ):
         self.config = config
+        self.instrument = config.instrument
         self.relevance_detector = relevance_detector or HybridRelevanceDetector(
+            instrument=self.instrument,
             mode=config.relevance_mode,
             combined_threshold=config.combined_similarity_threshold,
             patient_threshold=config.patient_similarity_threshold,
             acceptance_threshold=config.relevance_acceptance_threshold,
         )
+        # Translation happens only when the transcript language differs from the
+        # one the instrument's rater expects.
         if translator is not None:
             self.translator = translator
-        elif config.source_language == "de":
+        elif not self.instrument.needs_translation_from(config.source_language):
             self.translator = IdentityTranslator()
         else:
             self.translator = MarianEnglishGermanTranslator(
@@ -55,19 +59,21 @@ class SymptomScoringPipeline:
             device=config.device,
             batch_size=config.batch_size,
             max_length=config.max_length,
+            score_range=self.instrument.score_range,
         )
         self.turn_scorer = TurnScorer(
             self.relevance_detector,
             self.translator,
             self.regressor,
+            instrument=self.instrument,
         )
 
     def score_session(self, path: str | Path) -> dict:
         source = load_session_source(path)
         pairs = build_turn_pairs(source)
         turn_results = self.turn_scorer.score_session(pairs)
-        aggregates = aggregate_topics(turn_results)
-        phq_results = project_to_phq(aggregates)
+        aggregates = aggregate_topics(turn_results, self.instrument)
+        phq_results = project_to_phq(aggregates, self.instrument)
         prior_levels, prior_source = load_prior_levels(source.metadata)
         comparison = compare_prior_expression_prediction(
             prior_levels,
@@ -75,11 +81,13 @@ class SymptomScoringPipeline:
             pairs,
             turn_results,
             phq_results,
+            self.instrument,
         )
 
+        name = self.instrument.name
         warnings: list[str] = [
-            "Outputs are research-only MADRS proxy scores, not clinical diagnoses.",
-            "PHQ prior anchors and MADRS severity scores are not numerically comparable.",
+            f"Outputs are research-only {name} proxy scores, not clinical diagnoses.",
+            f"PHQ prior anchors and {name} severity scores are not numerically comparable.",
         ]
         if any(pair.context_synthesized for pair in pairs):
             warnings.append(
@@ -89,7 +97,7 @@ class SymptomScoringPipeline:
             warnings.append(f"Patient prior levels are incomplete ({prior_source}).")
 
         return {
-            "schema_version": "1.0",
+            "schema_version": "2.0",
             "patient_id": source.metadata.get("patient_id"),
             "session_id": source.metadata.get("session_id", source.session_dir.name),
             "source_path": str(source.session_dir),
@@ -97,8 +105,9 @@ class SymptomScoringPipeline:
                 "conversation_language", self.config.source_language
             ),
             "created_at": datetime.now(UTC).isoformat(),
+            "instrument": self.instrument.describe(),
             "model": {
-                "madrs_model_id": self.config.model_id,
+                "rater_model_id": self.config.model_id,
                 "translation_model_id": self.translator.model_id,
                 "device": str(self.regressor.device),
                 "batch_size": self.regressor.batch_size,
@@ -115,7 +124,7 @@ class SymptomScoringPipeline:
             },
             "aggregation_method": self.config.aggregation_method,
             "turn_results": [item.to_dict() for item in turn_results],
-            "madrs_topics": {
+            "topics": {
                 topic: aggregate.to_dict()
                 for topic, aggregate in aggregates.items()
             },

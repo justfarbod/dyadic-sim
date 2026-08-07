@@ -1,4 +1,4 @@
-"""Auditable relevance detection before MADRS regression."""
+"""Auditable relevance detection, run before the rater sees a turn."""
 
 from __future__ import annotations
 
@@ -7,11 +7,8 @@ from typing import Any
 
 import numpy as np
 
-from symptom_scoring.config import (
-    MADRS_RELEVANCE_PATTERNS,
-    MADRS_TOPIC_DESCRIPTIONS_EN,
-    MADRS_TOPICS,
-)
+from symptom_scoring.instrument import Instrument
+from symptom_scoring.instruments import DEFAULT_INSTRUMENT
 from symptom_scoring.types import RelevanceResult, TurnPair
 
 
@@ -44,6 +41,7 @@ class HybridRelevanceDetector:
     def __init__(
         self,
         *,
+        instrument: Instrument = DEFAULT_INSTRUMENT,
         mode: str = "hybrid",
         combined_threshold: float = 0.50,
         patient_threshold: float = 0.35,
@@ -52,14 +50,15 @@ class HybridRelevanceDetector:
     ):
         if mode not in {"hybrid", "rules"}:
             raise ValueError("Relevance mode must be 'hybrid' or 'rules'")
+        self.instrument = instrument
         self.mode = mode
         self.combined_threshold = combined_threshold
         self.patient_threshold = patient_threshold
         self.acceptance_threshold = acceptance_threshold
         self._embedder = embedder
         self._patterns = {
-            topic: re.compile(pattern, re.IGNORECASE)
-            for topic, pattern in MADRS_RELEVANCE_PATTERNS.items()
+            topic: re.compile(instrument.relevance_patterns[topic], re.IGNORECASE)
+            for topic in instrument.topics
         }
 
     def _get_embedder(self):
@@ -73,12 +72,13 @@ class HybridRelevanceDetector:
         patient_sims: dict[tuple[int, str], float] = {}
         combined_sims: dict[tuple[int, str], float] = {}
 
+        topics = self.instrument.topics
         valid_pairs = [pair for pair in pairs if pair.valid]
         if self.mode == "hybrid" and valid_pairs:
             embedder = self._get_embedder()
             topic_vectors = np.asarray(
                 embedder.encode(
-                    [MADRS_TOPIC_DESCRIPTIONS_EN[topic] for topic in MADRS_TOPICS],
+                    [self.instrument.topic_descriptions[topic] for topic in topics],
                     normalize_embeddings=True,
                     show_progress_bar=False,
                 )
@@ -103,19 +103,19 @@ class HybridRelevanceDetector:
             patient_matrix = patient_vectors @ topic_vectors.T
             combined_matrix = combined_vectors @ topic_vectors.T
             for pair_index, pair in enumerate(valid_pairs):
-                for topic_index, topic in enumerate(MADRS_TOPICS):
+                for topic_index, topic in enumerate(topics):
                     key = (pair.turn_index, topic)
                     patient_sims[key] = float(patient_matrix[pair_index, topic_index])
                     combined_sims[key] = float(combined_matrix[pair_index, topic_index])
 
         results: list[RelevanceResult] = []
         for pair in pairs:
-            for topic in MADRS_TOPICS:
+            for topic in topics:
                 if not pair.valid:
                     results.append(
                         RelevanceResult(
                             turn_index=pair.turn_index,
-                            madrs_topic=topic,
+                            topic=topic,
                             relevant=False,
                             relevance_confidence=1.0,
                             relevance_method="invalid_turn",
@@ -136,7 +136,7 @@ class HybridRelevanceDetector:
                     evidence = _evidence_sentence(pair.patient_text, pattern)
                     result = RelevanceResult(
                         turn_index=pair.turn_index,
-                        madrs_topic=topic,
+                        topic=topic,
                         relevant=True,
                         relevance_confidence=0.95,
                         relevance_method="patient_rule",
@@ -152,7 +152,7 @@ class HybridRelevanceDetector:
                     )
                     result = RelevanceResult(
                         turn_index=pair.turn_index,
-                        madrs_topic=topic,
+                        topic=topic,
                         relevant=True,
                         relevance_confidence=0.90,
                         relevance_method="therapist_rule_referential_answer",
@@ -175,7 +175,7 @@ class HybridRelevanceDetector:
                     confidence = min(0.99, 0.80 + max(0.0, margin) * 0.38)
                     result = RelevanceResult(
                         turn_index=pair.turn_index,
-                        madrs_topic=topic,
+                        topic=topic,
                         relevant=True,
                         relevance_confidence=confidence,
                         relevance_method="semantic_similarity",
@@ -186,7 +186,7 @@ class HybridRelevanceDetector:
                 else:
                     result = RelevanceResult(
                         turn_index=pair.turn_index,
-                        madrs_topic=topic,
+                        topic=topic,
                         relevant=False,
                         relevance_confidence=0.95 if not therapist_match else 0.70,
                         relevance_method=(

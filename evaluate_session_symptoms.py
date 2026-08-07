@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from symptom_scoring.config import ScoringConfig
+from symptom_scoring.instruments import REGISTRY, get_instrument
 from symptom_scoring.pipeline import SymptomScoringPipeline
 from symptom_scoring.result_writer import (
     write_directory_summary,
@@ -52,7 +53,17 @@ def parse_args() -> argparse.Namespace:
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--session-path", help="Session directory or transcript.jsonl path")
     source.add_argument("--sessions-dir", help="Directory whose child folders are sessions")
-    parser.add_argument("--model-id", default="webesama/MADRS-BERT")
+    parser.add_argument(
+        "--instrument",
+        choices=sorted(REGISTRY),
+        default="madrs",
+        help="Rating instrument (topic taxonomy) to score against",
+    )
+    parser.add_argument(
+        "--model-id",
+        default="webesama/MADRS-BERT",
+        help="Rater checkpoint; must match the chosen --instrument",
+    )
     parser.add_argument(
         "--translator-model-id",
         default="Helsinki-NLP/opus-mt-en-de",
@@ -85,6 +96,7 @@ def parse_args() -> argparse.Namespace:
 
 def build_config(args: argparse.Namespace) -> ScoringConfig:
     return ScoringConfig(
+        instrument=get_instrument(args.instrument),
         model_id=args.model_id,
         translator_model_id=args.translator_model_id,
         source_language=args.source_language,
@@ -105,8 +117,13 @@ def main() -> int:
         experiment_dir = experiment_output_dir(args.output_dir, args.experiment_name)
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
-    print("Loading translation, relevance, and MADRS-BERT models once...")
-    pipeline = SymptomScoringPipeline(build_config(args))
+    config = build_config(args)
+    print(
+        f"Scoring against {config.instrument.name} "
+        f"({len(config.instrument.topics)} topics) with {config.model_id}"
+    )
+    print("Loading translation, relevance, and rating models once...")
+    pipeline = SymptomScoringPipeline(config)
 
     if args.session_path:
         result = pipeline.score_session(args.session_path)

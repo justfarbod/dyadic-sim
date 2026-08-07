@@ -35,7 +35,7 @@ class TurnPair(JsonRecord):
 @dataclass
 class RelevanceResult(JsonRecord):
     turn_index: int
-    madrs_topic: str
+    topic: str
     relevant: bool
     relevance_confidence: float
     relevance_method: str
@@ -59,7 +59,7 @@ class ModelPrediction(JsonRecord):
 class TurnTopicResult(JsonRecord):
     turn_index: int
     symptom: str | None
-    madrs_topic: str
+    topic: str
     relevant: bool
     accepted_for_scoring: bool
     relevance_confidence: float
@@ -84,7 +84,7 @@ class TurnTopicResult(JsonRecord):
 
 @dataclass
 class TopicAggregate(JsonRecord):
-    madrs_topic: str
+    topic: str
     raw_session_score: float | None
     rounded_session_score: int | None
     source_turn: int | None

@@ -20,21 +20,27 @@ The framework is designed to be adaptable. You can swap models, modify priors, a
 
 ## What It Measures
 
-The simulation tracks six markers that capture whether agents are shaped by the interaction itself or simply executing their assigned role:
+The simulation measures whether symptoms written into the patient prior are actually
+*expressed* in the patient agent's speech, and at what severity:
 
-| Marker | What it detects |
+| Analysis | What it detects |
 |---|---|
-| Semantic drift | Agent language diverging from its original prior over time |
-| Reciprocal determination | Same agent producing different outputs with a different partner |
-| Role-self tension | Friction between role agenda and immediate response |
-| Cumulative structure | Later turns preserving and transforming earlier ones |
-| Recognition dynamics | Agent registering and responding to being seen or misread |
-| Telos tracking | Dyad orienting toward its own ending |
+| Symptom relevance | Whether a given turn discusses a symptom at all, before it is scored |
+| Symptom severity | Per-turn and per-session severity ratings from a pluggable rating model (`symptom_scoring/`) |
+| Construct validity | Whether an injected symptom is expressed rather than silently ignored (`analysis/validation/`) |
 
-Two additional analyses run alongside:
+The severity step is deliberately instrument-agnostic. `symptom_scoring/` defines the
+pipeline (parse transcript → filter for relevance → rate → aggregate to session
+level); everything specific to a given clinical scale is bundled in an `Instrument`
+(`symptom_scoring/instrument.py`) — its topics, the patterns that mark a turn as
+being about a topic, the score range, the language its rater expects, and how the
+topics line up with the PHQ anchors in patient priors.
 
-- **Unconscious emergence**: when and how a hidden agenda (held by the simulation, not the patient agent) surfaces through the interaction, and whether the therapist registers it.
-- **Frame integrity**: whether the therapist's ethical priors hold under pressure from the patient's relational patterns.
+MADRS is the instrument currently wired up, as a worked example rather than a
+commitment to that scale. Swapping it means defining another `Instrument` and
+pointing `--instrument` at it, not editing the pipeline.
+
+See [Validation Analyses](#validation-analyses) for how these are run.
 
 ---
 
@@ -135,23 +141,29 @@ dyadic-sim/
 |   |-- session.py               # session lifecycle: start / resume / close
 |
 |-- analysis/
-|   |-- markers.py               # coordinates all six personhood marker scores
-|   |-- drift.py                 # marker 1: semantic distance from prior over turns
-|   |-- counterfactual.py        # marker 2: same agent + different other
-|   |-- role_tension.py          # marker 3: friction between role and response
-|   |-- aufhebung.py             # marker 4: cumulative dialectical structure
-|   |-- recognition.py           # marker 5: recognition-seeking and response
-|   |-- telos_tracker.py         # marker 6: orientation toward dissolution
-|   |-- unconscious_emergence.py # special: did the hidden agenda surface?
-|   |-- frame_integrity.py       # special: did ethical priors hold under pressure?
-|   |-- report.py                # assembles full session report
+|   |-- embeddings.py            # shared sentence-transformer model loader
 |   |-- validation/              # manipulation-validity checks (see Validation Analyses)
 |       |-- paths.py             # canonical data/ input + output locations
 |       |-- sessions.py          # shared session loader
 |       |-- symptom_embed.py     # embedding manipulation check (target_z)
 |       |-- compare_baseline.py  # pilot vs baseline delta + figure
 |
+|-- symptom_scoring/
+|   |-- instrument.py            # Instrument: topics, patterns, range, prior mapping
+|   |-- instruments/
+|   |   |-- madrs.py             # the MADRS taxonomy (the one currently wired up)
+|   |-- pipeline.py              # end-to-end: transcript -> per-session symptom scores
+|   |-- transcript_parser.py     # reads session transcripts into scoreable turns
+|   |-- relevance_detector.py    # does this turn discuss a topic at all?
+|   |-- madrs_bert_model.py      # current severity rater (swappable; MADRS-BERT)
+|   |-- turn_scorer.py           # per-turn scoring
+|   |-- session_aggregator.py    # per-turn scores -> session-level score
+|   |-- translator.py            # translation step, only if the rater needs it
+|   |-- result_writer.py         # writes scores to data/results/
+|   |-- config.py                # PHQ prior vocabulary, thresholds, runtime settings
+|
 |-- run_symptom_experiments.py   # batch-generate symptom-isolated sessions
+|-- evaluate_session_symptoms.py # score existing sessions with the scoring pipeline
 |
 |-- data/
 |   |-- sessions/
@@ -295,7 +307,7 @@ Stage 2: different local models
 
 ## Validation Analyses
 
-Beyond the six personhood markers, `analysis/validation/` holds checks on the
+`analysis/validation/` holds checks on the
 **construct validity of experimental manipulations** — currently the symptom-injection
 study, which asks whether a PHQ-9 depression symptom written into the patient prior is
 actually *expressed* by the patient agent (rather than silently ignored).
@@ -345,14 +357,44 @@ Companion scripts in the package: `symptom_manifest.py` (transparent keyword/lex
 check), `symptom_embed_bycase.py` (split by patient case), and `symptom_embed_robust.py`
 (robustness to the reference wording).
 
-### MADRS-BERT session scoring
+### Session symptom scoring
 
-`evaluate_session_symptoms.py` produces research-only MADRS proxy scores from saved
-sessions. It pairs each patient response with the preceding therapist message,
-filters turn-topic combinations for relevance, translates accepted English pairs
-to German, scores them with `webesama/MADRS-BERT`, and selects the maximum accepted
-score for each MADRS topic. PHQ prior anchors and MADRS scores are reported
-separately and must not be interpreted as the same scale.
+`evaluate_session_symptoms.py` produces research-only symptom severity scores from
+saved sessions. The pipeline is fixed; the rating model is not. It pairs each patient
+response with the preceding therapist message, filters turn-topic combinations for
+relevance, hands the accepted pairs to a rating model, and aggregates to one score
+per topic per session.
+
+The instrument currently wired up is MADRS (`--instrument madrs`, the default), rated
+by `webesama/MADRS-BERT`. That checkpoint declares `language="de"`, so accepted English
+pairs are translated first; an instrument whose rater already works in the transcript
+language skips translation entirely. The per-topic maximum accepted score is kept.
+
+Prior anchors (PHQ) and the resulting severity scores are reported separately and must
+not be interpreted as the same scale. Each instrument declares how well its topics
+approximate the PHQ anchors (`close` / `partial` / `approximate` / `none`), and that
+quality flag is carried into every result.
+
+**Adding an instrument.** Define an `Instrument` in `symptom_scoring/instruments/` and
+register it in that package's `REGISTRY`:
+
+```python
+MY_SCALE = Instrument(
+    key="my_scale",
+    name="MyScale",
+    topics=("mood", "sleep"),
+    topic_descriptions={"mood": "...", "sleep": "..."},   # English, for relevance
+    relevance_patterns={"mood": r"\b(sad|down)\b", ...},  # English, pre-translation
+    score_range=(0.0, 3.0),
+    language="en",                                        # what the rater expects
+    prior_topic_map={"depressed_mood": "mood", "psychomotor_changes": None},
+    prior_mapping_quality={"depressed_mood": "close", "psychomotor_changes": "none"},
+)
+```
+
+It is checked for consistency on construction (every topic described and matchable,
+prior map pointing only at real topics), and the pipeline needs no changes. A rater
+for a new instrument only has to provide `prepare_input` and `predict_batch`.
 
 Score one session in PowerShell:
 
@@ -387,7 +429,8 @@ Use a different `--experiment-name` for each experiment. Names may contain
 letters, numbers, dots, underscores, and hyphens. If the option is omitted,
 the per-session folders are written directly under `--output-dir`.
 
-The first run downloads the German translation checkpoint and MADRS-BERT. Add
+With the default rater, the first run downloads MADRS-BERT and the German
+translation checkpoint it depends on. Add
 `--device cpu` to force CPU execution or `--relevance-mode rules` to use only
 transparent relevance rules without the semantic-similarity fallback.
 

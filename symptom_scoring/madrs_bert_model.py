@@ -1,4 +1,9 @@
-"""One-process MADRS-BERT regression wrapper."""
+"""One-process MADRS-BERT regression wrapper.
+
+This is the rater component: one implementation of the interface the pipeline
+expects (`prepare_input` + `predict_batch`). The topic taxonomy it scores
+against is supplied by the caller, not defined here.
+"""
 
 from __future__ import annotations
 
@@ -21,6 +26,7 @@ class MadrsBertRegressor:
         device: str = "auto",
         batch_size: int | None = None,
         max_length: int = 512,
+        score_range: tuple[float, float] = (0.0, 6.0),
         tokenizer=None,
         model=None,
     ):
@@ -28,6 +34,7 @@ class MadrsBertRegressor:
         self.device = resolve_device(device)
         self.batch_size = batch_size or (16 if self.device.type == "cuda" else 4)
         self.max_length = max_length
+        self.score_range = score_range
 
         if tokenizer is None or model is None:
             from transformers import AutoModelForSequenceClassification, AutoTokenizer
@@ -185,8 +192,11 @@ class MadrsBertRegressor:
             for job_id, value in zip(job_ids, logits.detach().cpu().tolist()):
                 raw_output = float(value)
                 if not math.isfinite(raw_output):
-                    raise ValueError(f"Non-finite MADRS-BERT output for job {job_id}")
-                clipped = max(0.0, min(6.0, raw_output))
+                    raise ValueError(
+                        f"Non-finite output from {self.model_id} for job {job_id}"
+                    )
+                low, high = self.score_range
+                clipped = max(low, min(high, raw_output))
                 predictions[job_id] = ModelPrediction(
                     job_id=job_id,
                     raw_model_output=raw_output,
