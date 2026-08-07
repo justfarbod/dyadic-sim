@@ -391,6 +391,107 @@ The first run downloads the German translation checkpoint and MADRS-BERT. Add
 `--device cpu` to force CPU execution or `--relevance-mode rules` to use only
 transparent relevance rules without the semantic-similarity fallback.
 
+#### Compare injected and detected symptoms
+
+After sessions have been scored, generate the validation charts for every
+result recursively beneath a result root:
+
+```powershell
+uv run python .\analysis\validation\plot_symptom_scoring.py `
+  --results-dir .\data\results\symptom_scores `
+  --sessions-dir .\data\sessions
+```
+
+To chart only one experiment, point `--results-dir` at that experiment folder:
+
+```powershell
+uv run python .\analysis\validation\plot_symptom_scoring.py `
+  --results-dir .\data\results\symptom_scores\pilot1 `
+  --sessions-dir .\data\sessions
+```
+
+By default, the command creates a `charts` folder under `--results-dir` with:
+
+- `injected_vs_detected_heatmap.png`: detection percentages for every injected
+  condition. Diagonal cells are target recovery; off-diagonal cells show
+  accepted evidence for other symptoms.
+- `detection_by_patient_model.png`: target detection rates grouped by the
+  patient model recorded in session metadata.
+- `detection_by_case.png`: target detection rates grouped by the base therapy
+  case, such as `afraid_of_dogs`, `empty_and_invisible`, and
+  `only_love_can_save_me`.
+- `symptom_detection_long.csv`: one auditable row per session and PHQ symptom,
+  including injection source, score, source turn, and both model names.
+- `symptom_detection_summary.csv`: the exact counts, denominators, and rates
+  used in the plots.
+
+It also adds two files to every source session folder under `--sessions-dir`,
+beside that session's `metadata.json` and `transcript.jsonl`:
+
+- `conversation_symptom_scores.csv`: one row per therapist-patient conversation
+  and one score column per PHQ symptom. Therapist and patient text are retained
+  for traceability.
+- `conversation_symptom_scores.png`: a table-like heatmap of the same scores.
+  A dash means that the conversation had no accepted relevance evidence for
+  that symptom; psychomotor is N/A because it has no mapped MADRS target.
+
+Add `--skip-session-diagrams` when only the aggregate charts are needed.
+
+Use `--out-dir <path>` to write these files elsewhere. A mapped symptom counts
+as **detected** when `raw_session_score` is non-null, meaning at least one turn
+contained accepted relevance evidence and was scored. This is an evidence
+detection rule, not a clinical diagnosis or a PHQ-9/MADRS severity comparison.
+Injection states unavailable from metadata are retained in the audit CSV but
+excluded from rate denominators. Psychomotor change is reported as N/A because
+the selected MADRS topic set has no corresponding target.
+
+#### Explain individual MADRS-BERT scores
+
+`explain_session_symptoms.py` applies Integrated Gradients directly to the
+saved, topic-specific German input used by MADRS-BERT. It explains the
+unclipped regression logit, then displays the stored raw output and its clipped
+0–6 proxy score. Positive word attribution means the word raises the raw output
+relative to a padding baseline; negative attribution means it lowers the raw
+output. These are local model-sensitivity explanations, not proof that a word
+causes a symptom clinically or linguistically.
+
+Explain one saved result:
+
+```powershell
+uv run python .\explain_session_symptoms.py `
+  --result-path .\data\results\symptom_scores\session_001\symptom_scores.json `
+  --sessions-dir .\data\sessions `
+  --device cuda
+```
+
+Explain every result recursively:
+
+```powershell
+uv run python .\explain_session_symptoms.py `
+  --results-dir .\data\results\symptom_scores `
+  --sessions-dir .\data\sessions `
+  --device cuda `
+  --ig-steps 32
+```
+
+Each source session folder receives:
+
+- `madrs_word_attributions.json`: exact and effective model inputs, input hash,
+  stored and reproduced outputs, baseline output, completeness error, and
+  signed word-level attributions.
+- `conversation_madrs_explanations.png`: every accepted MADRS topic, including
+  tension.
+- `conversation_phq_explanations.png`: the same explanations filtered to topics
+  with a PHQ mapping.
+
+The command verifies that a rerun reproduces each stored raw model output within
+`1e-3` before producing attributions. Mismatches remain auditable in the JSON
+but are not highlighted as valid explanations. Results are cached using the
+model configuration and hashes of every saved input; rerunning resumes from the
+first changed or unfinished session. Use `--force` to recompute, or reduce
+`--ig-steps` for a faster exploratory run. Thirty-two steps is the default and
+can take substantial time over the full dataset, especially on CPU.
+
 ---
 
 ## Theoretical Background

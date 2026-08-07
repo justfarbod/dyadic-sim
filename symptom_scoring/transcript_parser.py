@@ -169,7 +169,7 @@ def load_prior_levels(metadata: dict[str, Any]) -> tuple[dict[str, str], str]:
             key = label_to_key.get(label.strip().casefold())
             if not key:
                 continue
-            lower = remainder.casefold()
+            lower = remainder.strip().casefold()
             frequency = next((item for item in frequencies if lower.startswith(item)), None)
             if frequency:
                 recovered[key] = frequency
