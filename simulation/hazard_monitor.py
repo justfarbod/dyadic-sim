@@ -15,8 +15,8 @@ Human review is required before continuing when crisis language appears.
 """
 
 from dataclasses import dataclass
-from priors.patient_prior import HazardProfile
 
+from priors.patient_prior import HazardProfile
 
 # Keywords that suggest frame pressure
 FRAME_PRESSURE_SIGNALS = [

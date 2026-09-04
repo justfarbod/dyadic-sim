@@ -8,8 +8,8 @@ from symptom_scoring.instrument import Instrument
 from symptom_scoring.instruments import MADRS, get_instrument
 
 __all__ = [
-    "Instrument",
     "MADRS",
+    "Instrument",
     "ScoringConfig",
     "SymptomScoringPipeline",
     "get_instrument",

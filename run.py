@@ -11,10 +11,9 @@ Usage:
 
 import argparse
 import sys
-from dotenv import load_dotenv
-
 
 import torch
+from dotenv import load_dotenv
 
 print("CUDA available:", torch.cuda.is_available())
 print("Torch version:", torch.__version__)

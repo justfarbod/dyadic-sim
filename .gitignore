@@ -4,8 +4,12 @@
 # JetBrains
 .idea/
 
-#generated yamls for testing
-config/priors/patient/cases/batch_*.yaml
+# Per-condition case YAMLs written by run_symptom_experiments.py. It always
+# names them "<prefix>_<case>_<symptom>_run_<n>.yaml", so matching on _run_
+# covers every prefix without listing them, and admits hand-written cases
+# automatically. (An earlier version re-admitted cases by name and silently
+# swallowed the next new one.)
+config/priors/patient/cases/*_run_*.yaml
 
 # uv / python
 .venv/
@@ -14,22 +18,17 @@ __pycache__/
 *.pyo
 .python-version
 
-# data outputs
-data/sessions/
-data/reports/
-data/ext-session-logs/
+# Batch-generation console logs. They belong in data/results/_logs/ (already
+# covered by data/* below), but a `nohup ... > run.log` launched from the repo
+# root writes to the CWD, so an unqualified redirect lands here instead. Ignored
+# wherever they appear: they are heavy, regenerable, and a session's real record
+# is its own directory under data/sessions/.
+*.log
+
+# All of data/ is ignored: raw sessions and derived outputs are heavy and
+# regenerable.
+data/*
 manuscript/
-
-
-
-# external / imported session logs (heavy + binary; provenance frozen in
-# data/results/baseline_v0/BASELINE.md).
-data/ext-session-logs/_extracted/
-data/ext-session-logs/*.zip
-
-# local analysis outputs (regenerable from analysis/validation/ + external data)
-data/results/
-tests/
 
 
 # streamlit
@@ -39,8 +38,8 @@ tests/
 .DS_Store
 Thumbs.db
 
-# Brainstorming
-AUDIT.md
-AUDIT_SYMPTOMS.md
-results-temp.md
+# Working notes and papers now live under manuscript/ (ignored wholesale above):
+# VALIDATION.md, CODE_FINDINGS.md, resources/, _archive/
 analysis/ANALYSIS.md
+AUDIT.md
+REVIEW_RECOMENDATIONS.md

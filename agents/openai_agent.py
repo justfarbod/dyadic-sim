@@ -6,10 +6,10 @@ Requires OPENAI_API_KEY in environment / .env
 """
 
 import os
-from openai import OpenAI
-from openai import APIConnectionError, APIStatusError
 
-from agents.base_agent import BaseAgent, Message, AgentResponse
+from openai import APIConnectionError, APIStatusError, OpenAI
+
+from agents.base_agent import AgentResponse, BaseAgent, Message
 
 
 class OpenAIAgent(BaseAgent):
@@ -19,7 +19,7 @@ class OpenAIAgent(BaseAgent):
         super().__init__(model, role)
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
-            raise EnvironmentError(
+            raise OSError(
                 "OPENAI_API_KEY not set. "
                 "Add it to your .env file or environment."
             )
@@ -58,5 +58,7 @@ class OpenAIAgent(BaseAgent):
             return True
         except (APIConnectionError, APIStatusError):
             return False
-        except Exception:
+        # Backstop for a health check: specific transport errors are caught
+        # above, and anything else still means 'not available'.
+        except Exception:  # noqa: BLE001
             return False

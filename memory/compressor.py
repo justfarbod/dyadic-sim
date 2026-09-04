@@ -13,9 +13,9 @@ re-frames in this step is primary data for further analysis
 """
 
 import json
+
 from agents.base_agent import BaseAgent, Message
 from memory.state import AgentState
-
 
 COMPRESSOR_PROMPT = """You just completed a turn in a therapeutic dyadic exchange.
 Your role was: {role}

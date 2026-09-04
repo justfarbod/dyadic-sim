@@ -11,7 +11,6 @@ from symptom_scoring.instrument import Instrument
 from symptom_scoring.instruments import DEFAULT_INSTRUMENT
 from symptom_scoring.types import RelevanceResult, TurnPair
 
-
 _REFERENCE_ANSWER = re.compile(
     r"^\s*(?:[\(\[].*?[\)\]]\s*)?"
     r"(?:yes|yeah|yep|no|nope|not really|sometimes|often|always|rarely|never|"

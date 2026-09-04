@@ -9,14 +9,13 @@ from __future__ import annotations
 from symptom_scoring.instrument import Instrument
 from symptom_scoring.instruments.madrs import MADRS
 
-
 REGISTRY: dict[str, Instrument] = {
     MADRS.key: MADRS,
 }
 
 DEFAULT_INSTRUMENT = MADRS
 
-__all__ = ["Instrument", "MADRS", "REGISTRY", "DEFAULT_INSTRUMENT", "get_instrument"]
+__all__ = ["DEFAULT_INSTRUMENT", "MADRS", "REGISTRY", "Instrument", "get_instrument"]
 
 
 def get_instrument(key: str) -> Instrument:

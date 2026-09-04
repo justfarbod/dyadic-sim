@@ -7,7 +7,6 @@ Every provider (Claude, OpenAI, Ollama) implements this interface.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass
@@ -22,9 +21,9 @@ class AgentResponse:
     """The response from an agent turn."""
     content: str
     model: str
-    input_tokens: Optional[int] = None
-    output_tokens: Optional[int] = None
-    provider: Optional[str] = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    provider: str | None = None
 
 
 class BaseAgent(ABC):
@@ -65,12 +64,10 @@ class BaseAgent(ABC):
         Returns:
             AgentResponse with content and usage metadata
         """
-        pass
 
     @abstractmethod
     def is_available(self) -> bool:
         """Check whether the model / provider is reachable."""
-        pass
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(model={self.model}, role={self.role})"

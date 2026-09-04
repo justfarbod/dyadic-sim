@@ -7,8 +7,8 @@ patient_prior.py handle structure and prompt construction.
 """
 
 from pathlib import Path
-import yaml
 
+import yaml
 
 PRIORS_DIR = Path("config/priors")
 
@@ -79,5 +79,6 @@ def _load(path: Path) -> dict:
     with open(path) as f:
         data = yaml.safe_load(f)
     if not isinstance(data, dict):
-        raise ValueError(f"Prior file must be a YAML mapping: {path}")
+        # Malformed file, not a bad argument, so ValueError is right here.
+        raise ValueError(f"Prior file must be a YAML mapping: {path}")  # noqa: TRY004
     return data

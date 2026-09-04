@@ -11,6 +11,7 @@ object) is run via the --resume flag in run.py.
 
 import json
 from pathlib import Path
+
 from memory.state import AgentState
 
 
@@ -56,7 +57,7 @@ def load_latest_state(session_dir: Path, role: str) -> AgentState | None:
     if not snapshots:
         return None
 
-    latest_turn = max(int(k) for k in snapshots.keys())
+    latest_turn = max(int(k) for k in snapshots)
     return AgentState.from_dict(snapshots[str(latest_turn)])
 
 

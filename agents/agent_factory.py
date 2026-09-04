@@ -6,11 +6,10 @@ Provider is inferred from which section of models.yaml the model appears in.
 """
 
 import yaml
-from pathlib import Path
 
 from agents.base_agent import BaseAgent
-from agents.local_agent import LocalAgent
 from agents.claude_agent import ClaudeAgent
+from agents.local_agent import LocalAgent
 from agents.openai_agent import OpenAIAgent
 
 

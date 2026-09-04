@@ -10,10 +10,9 @@ How we build it determines what the agent can 'remember' and 'be'.
 """
 
 from agents.base_agent import Message
-from priors.therapist_prior import TherapistPrior
-from priors.patient_prior import PatientPrior
 from memory.state import AgentState
-
+from priors.patient_prior import PatientPrior
+from priors.therapist_prior import TherapistPrior
 
 # How many previous turns to include in the message history.
 # Beyond this, the agent relies on its state summary (compressed memory).

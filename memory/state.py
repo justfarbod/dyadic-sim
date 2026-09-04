@@ -12,7 +12,7 @@ what is dropped, what is re-framed) is primary data.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
 
 @dataclass
@@ -68,8 +68,8 @@ class AgentState:
     original_prior_text: str = ""
 
     # Timestamps
-    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
-    updated_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).replace(tzinfo=None).isoformat())
+    updated_at: str = field(default_factory=lambda: datetime.now(UTC).replace(tzinfo=None).isoformat())
 
     def to_summary(self) -> str:
         """
@@ -111,7 +111,7 @@ class AgentState:
             description=description,
             triggered_by=triggered_by,
         ))
-        self.updated_at = datetime.utcnow().isoformat()
+        self.updated_at = datetime.now(UTC).replace(tzinfo=None).isoformat()
 
     def record_key_moment(
         self, turn: int, role: str, summary: str, significance: str
@@ -171,8 +171,8 @@ class AgentState:
             relational_history=data.get("relational_history", ""),
             drift_log=data.get("drift_log", []),
             original_prior_text=data.get("original_prior_text", ""),
-            created_at=data.get("created_at", datetime.utcnow().isoformat()),
-            updated_at=data.get("updated_at", datetime.utcnow().isoformat()),
+            created_at=data.get("created_at", datetime.now(UTC).replace(tzinfo=None).isoformat()),
+            updated_at=data.get("updated_at", datetime.now(UTC).replace(tzinfo=None).isoformat()),
         )
         for m in data.get("key_moments", []):
             state.key_moments.append(KeyMoment(**m))

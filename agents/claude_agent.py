@@ -6,10 +6,11 @@ Requires ANTHROPIC_API_KEY in environment / .env
 """
 
 import os
+
 import anthropic
 from anthropic import APIConnectionError, APIStatusError
 
-from agents.base_agent import BaseAgent, Message, AgentResponse
+from agents.base_agent import AgentResponse, BaseAgent, Message
 
 
 class ClaudeAgent(BaseAgent):
@@ -19,7 +20,7 @@ class ClaudeAgent(BaseAgent):
         super().__init__(model, role)
         api_key = os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
-            raise EnvironmentError(
+            raise OSError(
                 "ANTHROPIC_API_KEY not set. "
                 "Add it to your .env file or environment."
             )
@@ -69,5 +70,7 @@ class ClaudeAgent(BaseAgent):
             return True
         except (APIConnectionError, APIStatusError):
             return False
-        except Exception:
+        # Backstop for a health check: specific transport errors are caught
+        # above, and anything else still means 'not available'.
+        except Exception:  # noqa: BLE001
             return False
