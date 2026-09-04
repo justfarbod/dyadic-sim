@@ -34,14 +34,9 @@ class TherapistPrior:
     agenda_prior: str = ""
     technical_priors: list[str] = field(default_factory=list)
 
-    def build_system_prompt(self, agent_state_summary: str = "") -> str:
+    def build_system_prompt(self) -> str:
         """
         Render the full system prompt for a therapist turn.
-
-        Args:
-            agent_state_summary: the agent's current state narrative,
-                                 injected so the agent "remembers" who
-                                 it has become through this encounter.
 
         Returns:
             System prompt string passed to the LLM on each turn.
@@ -70,16 +65,6 @@ class TherapistPrior:
         sections.append("## Your Self-Understanding\n" + self.self_prior.strip())
 
         sections.append("## How You Understand the Patient\n" + self.relational_prior.strip())
-
-        if agent_state_summary:
-            sections.append(
-                "## Your State in This Encounter\n"
-                + agent_state_summary.strip()
-                + "\n\n"
-                + "This is who you have become through this particular encounter. "
-                "It is not a script, it is a living record of how this relationship "
-                "has shaped you so far."
-            )
 
         sections.append(
             "## How to Respond\n"

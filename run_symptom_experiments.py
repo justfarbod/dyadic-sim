@@ -90,7 +90,6 @@ def run_session(
     orientation: str,
     turns: int,
     max_tokens: int,
-    no_compress: bool,
 ) -> None:
     cmd = [
         "uv",
@@ -110,9 +109,6 @@ def run_session(
         "--max-tokens",
         str(max_tokens),
     ]
-
-    if no_compress:
-        cmd.append("--no-compress")
 
     print(f"\nRunning case: {case_name}")
     print(" ".join(cmd))
@@ -175,11 +171,6 @@ def main() -> None:
         "--prefix",
         default="batch",
         help="Prefix for generated temporary case names",
-    )
-    parser.add_argument(
-        "--no-compress",
-        action="store_true",
-        help="Pass through to run.py",
     )
     parser.add_argument(
         "--keep-generated-cases",
@@ -249,7 +240,6 @@ def main() -> None:
                 orientation=args.orientation,
                 turns=args.turns,
                 max_tokens=args.max_tokens,
-                no_compress=args.no_compress,
             )
 
         for symptom_key in symptom_keys:
@@ -267,7 +257,6 @@ def main() -> None:
                     orientation=args.orientation,
                     turns=args.turns,
                     max_tokens=args.max_tokens,
-                    no_compress=args.no_compress,
                 )
 
         print("\nAll runs completed successfully.")

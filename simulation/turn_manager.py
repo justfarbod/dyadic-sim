@@ -2,27 +2,29 @@
 simulation/turn_manager.py
 
 Builds the full context passed to each agent on every turn:
-    system_prompt = prior + current state summary
-    messages      = conversation history (last N turns)
+    system_prompt = the agent's prior
+    messages      = the conversation so far, as alternating user/assistant turns
 
-The context window is the agent's only view of the world.
-How we build it determines what the agent can 'remember' and 'be'.
+The context window is the agent's only view of the world. There is no other
+carrier of memory. An earlier version also injected a per-turn, LLM-written
+"state summary" into the system prompt; that changed what the patient said on
+every turn for reasons unrelated to the manipulation being measured, so the
+prior is now the only constant and the transcript the only record.
 """
 
 from agents.base_agent import Message
-from memory.state import AgentState
 from priors.patient_prior import PatientPrior
 from priors.therapist_prior import TherapistPrior
 
-# How many previous turns to include in the message history.
-# Beyond this, the agent relies on its state summary (compressed memory).
-# Increase for richer context at the cost of longer prompts.
-HISTORY_WINDOW = 10
+# How many previous turns to include in the message history. None means the
+# whole session. Nothing summarises what falls outside a finite window, so a
+# window silently forgets; set one only when a session would not fit the
+# model's context.
+HISTORY_WINDOW: int | None = None
 
 
 def build_therapist_context(
     prior: TherapistPrior,
-    state: AgentState,
     history: list[tuple[str, str]],   # list of (patient_text, therapist_text)
     latest_patient_turn: str,
 ) -> tuple[str, list[Message]]:
@@ -31,16 +33,13 @@ def build_therapist_context(
 
     Args:
         prior:                The therapist's prior object
-        state:                The therapist's current state
         history:              Past (patient, therapist) turn pairs
         latest_patient_turn:  The patient's most recent message
 
     Returns:
         (system_prompt, messages) ready to pass to agent.complete()
     """
-    system_prompt = prior.build_system_prompt(
-        agent_state_summary=state.to_summary()
-    )
+    system_prompt = prior.build_system_prompt()
     messages = _build_messages(
         history=history,
         latest_other_turn=latest_patient_turn,
@@ -52,7 +51,6 @@ def build_therapist_context(
 
 def build_patient_context(
     prior: PatientPrior,
-    state: AgentState,
     history: list[tuple[str, str]],   # list of (patient_text, therapist_text)
     latest_therapist_turn: str,
 ) -> tuple[str, list[Message]]:
@@ -61,16 +59,13 @@ def build_patient_context(
 
     Args:
         prior:                  The patient's prior object
-        state:                  The patient's current state
         history:                Past (patient, therapist) turn pairs
         latest_therapist_turn:  The therapist's most recent message
 
     Returns:
         (system_prompt, messages) ready to pass to agent.complete()
     """
-    system_prompt = prior.build_system_prompt(
-        agent_state_summary=state.to_summary(),
-    )
+    system_prompt = prior.build_system_prompt()
     # From the patient's perspective: therapist is user, patient is assistant
     swapped = [(t, p) for p, t in history]
     # Clear last therapist text to avoid duplication with latest_other_turn
@@ -92,15 +87,12 @@ def _build_messages(
     other_role: str,
 ) -> list[Message]:
     """
-    Build alternating user/assistant message list from history.
-
-    Applies the HISTORY_WINDOW limit (older turns are dropped),
-    leaving the agent to rely on its state summary for earlier context.
+    Build an alternating user/assistant message list from history, applying
+    HISTORY_WINDOW if one is set.
     """
     messages: list[Message] = []
 
-    # Apply window
-    windowed = history[-HISTORY_WINDOW:] if len(history) > HISTORY_WINDOW else history
+    windowed = history if HISTORY_WINDOW is None else history[-HISTORY_WINDOW:]
 
     for other_text, own_text in windowed:
         if other_text:

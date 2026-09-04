@@ -4,9 +4,6 @@ from rich.text import Text
 
 from agents.agent_factory import build_agent
 from agents.base_agent import BaseAgent
-from memory.compressor import compress_turn
-from memory.persistence import load_latest_state, save_state_snapshot
-from memory.state import AgentState
 from priors.patient_prior import PatientPrior, build_patient_prior
 from priors.therapist_prior import TherapistPrior, build_therapist_prior
 from simulation.opening import opening_utterance
@@ -19,7 +16,10 @@ console = Console()
 
 class Dyad:
     """
-    Manages a complete dyadic simulation (agents, priors, memory, session).
+    Manages a complete dyadic simulation (agents, priors, session).
+
+    Each agent's context on every turn is its prior plus the transcript so far;
+    nothing else is carried between turns. See simulation/turn_manager.py.
     """
 
     def __init__(
@@ -29,11 +29,8 @@ class Dyad:
         case_name: str,
         orientation: str = "psychodynamic",
         session_id: str | None = None,
-        compress_states: bool = True,
         patient_id: str | None = None,
     ):
-        self.compress_states = compress_states
-
         # Build priors
         self.therapist_prior: TherapistPrior = build_therapist_prior(orientation)
         self.patient_prior: PatientPrior = build_patient_prior(case_name)
@@ -74,18 +71,6 @@ class Dyad:
                 initial_patient_prompt=opening_utterance(),
             )
 
-        # Initialise or restore agent states
-        self.therapist_state = self._init_state(
-            role="therapist",
-            model=therapist_model,
-            prior_text=self.therapist_prior.build_system_prompt(),
-        )
-        self.patient_state = self._init_state(
-            role="patient",
-            model=patient_model,
-            prior_text=self.patient_prior.build_system_prompt(),
-        )
-
     def run(self, n_turns: int = 10, max_tokens: int = 300) -> Session:
         """
         Run the dyadic exchange for n_turns turns.
@@ -110,15 +95,12 @@ class Dyad:
 
             # --- Patient turn ---
 
-            # First turn: patient opens; subsequent turns: respond to therapist
-            if not history:
-                latest_therapist = opening_prompt
-            else:
-                latest_therapist = history[-1][1] if history else ""
+            # First turn: the patient answers the opening; afterwards, the
+            # therapist's latest utterance.
+            latest_therapist = history[-1][1] if history else opening_prompt
 
             patient_system, patient_messages = build_patient_context(
                 prior=self.patient_prior,
-                state=self.patient_state,
                 history=history,
                 latest_therapist_turn=latest_therapist,
             )
@@ -147,7 +129,6 @@ class Dyad:
 
             therapist_system, therapist_messages = build_therapist_context(
                 prior=self.therapist_prior,
-                state=self.therapist_state,
                 history=history,
                 latest_patient_turn=patient_text,
             )
@@ -161,29 +142,6 @@ class Dyad:
             therapist_text = clean_utterance(therapist_text_raw)
 
             _print_turn("Therapist", therapist_text, "cyan")
-
-            # --- State compression ---
-
-            if self.compress_states:
-                self.therapist_state = compress_turn(
-                    agent=self.therapist_agent,
-                    state=self.therapist_state,
-                    own_turn=therapist_text,
-                    other_turn=patient_text,
-                    turn_number=turn_num,
-                )
-                self.patient_state = compress_turn(
-                    agent=self.patient_agent,
-                    state=self.patient_state,
-                    own_turn=patient_text,
-                    other_turn=therapist_text,
-                    turn_number=turn_num,
-                )
-
-            # --- Save snapshots ---
-
-            save_state_snapshot(self.therapist_state, self.session.session_dir, turn_num)
-            save_state_snapshot(self.patient_state, self.session.session_dir, turn_num)
 
             # --- Record turn ---
 
@@ -204,22 +162,6 @@ class Dyad:
         console.rule("[bold]Session complete[/bold]")
         self.session.save_metadata()
         return self.session
-
-    def _init_state(self, role: str, model: str, prior_text: str) -> AgentState:
-        """
-        Restore state from disk if resuming, otherwise create fresh.
-        """
-        existing = load_latest_state(self.session.session_dir, role)
-        if existing:
-            return existing
-
-        return AgentState(
-            agent_id=f"{role}_{model}",
-            role=role,
-            model=model,
-            session_id=self.session.session_id,
-            original_prior_text=prior_text,
-        )
 
 
 def _print_turn(label: str, text: str, colour: str) -> None:

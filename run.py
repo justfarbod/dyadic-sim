@@ -52,11 +52,6 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--turns", type=int, default=10, help="Number of turns to run")
     parser.add_argument("--max-tokens", type=int, default=300, help="Max tokens per response")
-    parser.add_argument(
-        "--no-compress",
-        action="store_true",
-        help="Disable state compression (faster, no memory across turns)",
-    )
 
     # Resume mode
     parser.add_argument("--resume", type=str, help="Resume a session by its directory path")
@@ -119,7 +114,6 @@ def main() -> None:
             case_name=meta["case_name"],
             orientation=meta.get("orientation", "psychodynamic"),
             session_id=session_id,
-            compress_states=not args.no_compress,
             patient_id=args.patient_id,
         )
         dyad.run(n_turns=args.additional_turns, max_tokens=args.max_tokens)
@@ -145,7 +139,6 @@ def main() -> None:
         patient_model=patient,
         case_name=args.case,
         orientation=args.orientation,
-        compress_states=not args.no_compress,
         patient_id=args.patient_id,
     )
 
@@ -153,7 +146,6 @@ def main() -> None:
 
     print(f"\nSession saved: data/sessions/{session.session_id}/")
     print(f"Transcript:    data/sessions/{session.session_id}/transcript.jsonl")
-    print(f"States:        data/sessions/{session.session_id}/therapist_state_snapshots.json")
     print()
 
 

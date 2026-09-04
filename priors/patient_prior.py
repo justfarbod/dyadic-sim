@@ -35,12 +35,9 @@ class PatientPrior:
     # Runtime tracking
     symptom_discussion: SymptomDiscussion = field(default_factory=SymptomDiscussion)
 
-    def build_system_prompt(self, agent_state_summary: str = "") -> str:
+    def build_system_prompt(self) -> str:
         """
         Render the system prompt for a patient turn.
-
-        Args:
-            agent_state_summary:  the patient's current state narrative
 
         Returns:
             System prompt string passed to the LLM on each turn.
@@ -85,12 +82,6 @@ class PatientPrior:
                 "how things have been for you. Some areas may have been fine, "
                 "others harder.\n\n"
                 + self.symptoms.strip()
-            )
-
-        if agent_state_summary:
-            sections.append(
-                "## Your Sense of This Encounter So Far\n"
-                + agent_state_summary.strip()
             )
 
         sections.append(
