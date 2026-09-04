@@ -1,8 +1,8 @@
 """Runtime settings and the PHQ-style prior vocabulary.
 
 This module covers the *prior* side only: the PHQ-9 anchors patient priors are
-written in, and the process-wide scoring settings. The rating side — topics,
-relevance patterns, score range — lives in `symptom_scoring.instrument`.
+written in, and the process-wide scoring settings. The rating side (topics,
+relevance patterns, score range) lives in `symptom_scoring.instrument`.
 """
 
 from __future__ import annotations
@@ -11,21 +11,14 @@ from dataclasses import dataclass, field
 
 from symptom_scoring.instrument import Instrument
 from symptom_scoring.instruments import DEFAULT_INSTRUMENT
+from symptom_scoring.prior_vocabulary import LABELS
 
-
-PHQ_SYMPTOM_LABELS = {
-    "lack_of_pleasure": "Little interest or pleasure in doing things",
-    "depressed_mood": "Feeling down, depressed, or hopeless",
-    "sleep_problems": "Sleep problems",
-    "low_energy": "Feeling tired or having little energy",
-    "appetite_changes": "Poor appetite or overeating",
-    "feelings_of_failure_or_guilt": "Feeling bad about yourself, guilty, or like a failure",
-    "concentration_problems": "Trouble concentrating",
-    "psychomotor_changes": "Moving or speaking slowly, or feeling restless",
-    "thoughts_of_death_or_self_harm": (
-        "Thoughts that you would be better off dead or of hurting yourself"
-    ),
-}
+# The PHQ-9 vocabulary lives in symptom_scoring.prior_vocabulary, named for its
+# role (what priors are written in) rather than for the instrument. It holds all three
+# registers (KEYS, LABELS, REFERENCES) side by side so they stop being
+# mistaken for copies of one another. Re-exported here under its historical
+# name because the prior side has always imported it from config.
+PHQ_SYMPTOM_LABELS = LABELS
 
 FREQUENCY_VALUES = {
     "not at all": 0,
