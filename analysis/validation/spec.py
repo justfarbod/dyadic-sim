@@ -1,0 +1,100 @@
+"""Load the frozen analysis specification and evaluate results against it.
+
+`config/analysis_spec.yaml` fixes the parameters, the estimand, the obligatory
+sensitivities and what counts as evidence. This module reads it and applies the
+criteria, so the verdict on a cell comes from the declared rule rather than from
+whichever number looked best.
+
+The criteria are conjunctive on purpose. In power01 `psychomotor_changes` has a
+LARGER lexicon lift than `sleep_problems` (+17pp vs +14pp) and should still not
+count: it leaks into the sleep arm (+6pp) and the embedding sees nothing
+(d=0.11). A magnitude-only rule admits it. That is the whole argument for
+requiring magnitude AND specificity AND agreement in direction.
+"""
+
+from __future__ import annotations
+
+import os
+
+import yaml
+
+SPEC_PATH = os.path.join("config", "analysis_spec.yaml")
+
+
+def load(path: str = SPEC_PATH) -> dict:
+    with open(path, encoding="utf-8") as handle:
+        return yaml.safe_load(handle)
+
+
+def evaluate(
+    *,
+    lexicon_lift_pp: float | None,
+    embedding_d: float | None,
+    embedding_contrast: float | None,
+    max_leak_pp: float | None,
+    spec: dict | None = None,
+) -> dict:
+    """Apply the declared criteria to one (case, symptom) cell.
+
+    `max_leak_pp` is the largest rise of THIS symptom's detector in an arm where
+    a different symptom was injected, expressed in percentage points over
+    control. None means no other injected arm was available to check, which is
+    reported as `unknown` rather than silently passed.
+    """
+    spec = spec or load()
+    c = spec["criteria"]
+    checks = {}
+
+    checks["magnitude_lexicon"] = {
+        "value": lexicon_lift_pp,
+        "threshold": c["magnitude"]["lexicon_lift_pp"],
+        "passed": (lexicon_lift_pp is not None
+                   and lexicon_lift_pp >= c["magnitude"]["lexicon_lift_pp"]),
+    }
+    checks["magnitude_embedding"] = {
+        "value": embedding_d,
+        "threshold": c["magnitude"]["embedding_cohens_d"],
+        "passed": (embedding_d is not None
+                   and embedding_d >= c["magnitude"]["embedding_cohens_d"]),
+    }
+    checks["specificity"] = {
+        "value": max_leak_pp,
+        "threshold": c["specificity"]["max_leak_pp"],
+        # Unknown is not a pass. A cell with no comparison arm cannot
+        # demonstrate specificity, and saying so is the honest outcome.
+        "passed": (max_leak_pp is not None
+                   and max_leak_pp <= c["specificity"]["max_leak_pp"]),
+        "note": None if max_leak_pp is not None else "no other injected arm to check",
+    }
+    same_sign = (
+        lexicon_lift_pp is not None and embedding_contrast is not None
+        and (lexicon_lift_pp > 0) == (embedding_contrast > 0)
+    )
+    checks["direction"] = {
+        "value": same_sign,
+        "threshold": c["direction"]["require_same_sign"],
+        "passed": bool(same_sign) or not c["direction"]["require_same_sign"],
+    }
+
+    failed = [k for k, v in checks.items() if not v["passed"]]
+    return {
+        "checks": checks,
+        "failed": failed,
+        "verdict": "supported" if not failed else "not supported",
+        "spec_version": spec["version"],
+        "spec_status": spec["status"],
+    }
+
+
+def format_verdict(name: str, result: dict) -> str:
+    lines = [(f"{name}: {result['verdict'].upper()} "
+              f"(spec {result['spec_version']}, {result['spec_status']})")]
+    for key, check in result["checks"].items():
+        mark = "pass" if check["passed"] else "FAIL"
+        value = check["value"]
+        shown = "n/a" if value is None else (
+            f"{value:+.2f}" if isinstance(value, float) else str(value))
+        extra = f"  ({check['note']})" if check.get("note") else ""
+        lines.append(f"    {mark:4s}  {key:22s} {shown:>8s}"
+                     f"  threshold {check['threshold']}{extra}")
+    return "\n".join(lines)
