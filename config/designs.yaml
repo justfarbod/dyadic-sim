@@ -37,6 +37,28 @@
 # and omits `hazard_monitor`. Arms at different versions are not comparable and
 # must not share a prefix.
 
+bedcheck04:
+  description: >
+    Same five-session control read as bedcheck03, one change each side: the
+    therapist prior no longer supplies emotion words, takes "nothing is wrong"
+    as an answer and does not talk about itself (generation_version 5), and
+    no_complaint carries a stance line against reframing (manuscript/CASES.md).
+    Read against bedcheck03 for what changed; five sessions show therapist
+    behaviour, not base rates.
+  cases: [no_complaint]
+  conditions: [no_symptoms]
+  runs: 5
+  therapist_model: mistral-nemo
+  patient_model: mistral-nemo
+  generation_version: 5
+  injection: active_only        # moot for a control arm; matched to power01
+  turns: 10
+  inclusion: all_valid
+  notes: >
+    Two things changed at once (therapist prior and case text), so a difference
+    from bedcheck03 cannot be attributed to either alone. The therapist prior
+    change applies to every future arm; the case change is specific to this bed.
+
 bedcheck03:
   description: >
     First look at the 2026-09-04 rewording of `no_complaint` (garage project,
