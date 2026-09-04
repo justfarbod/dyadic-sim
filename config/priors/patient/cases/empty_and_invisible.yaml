@@ -9,8 +9,7 @@
 # NO symptoms block. Sequelae are supplied per condition by
 # run_symptom_experiments.py; this file as-is is the isolated-complaint control.
 #
-# Patient-visible fields are all first person. hazard_profile and
-# unconscious_agenda are hidden from the patient agent.
+# Patient-visible fields are all first person.
 
 presenting_complaint: >
   I go through my days feeling invisible. I can be in a room full of
@@ -63,19 +62,3 @@ hazard_profile:
     reaches the emotional core. Patient will collude with a therapist
     who is also more comfortable with ideas than feelings. The real
     work requires getting beneath the analytic surface.
-
-# [HIDDEN, not passed to the patient agent until the reveal trigger fires]
-unconscious_agenda:
-  content: >
-    To be seen as special, uniquely and unreservedly seen, in a way
-    that repairs something that feels built in. But this wish is so
-    associated with humiliation (having needed it and not received it)
-    that it cannot be expressed directly. Instead it appears as
-    self-sufficiency, intellectual performance, and a quiet
-    expectation that the therapist will somehow see past all of it
-    without being asked.
-  reveal_trigger: >
-    Patient dismisses or subtly devalues a therapist observation,
-    or says something that implies the therapist has misunderstood
-    or underestimated them.
-  reveal_turn_minimum: 6

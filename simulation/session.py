@@ -41,7 +41,6 @@ class TurnRecord:
     patient_model: str
     therapist_tokens: int | None
     patient_tokens: int | None
-    unconscious_revealed: bool
     symptom_discussion_started: bool = False
     # Pre-cleaning text, recorded only when clean_utterance() changed something
     # (stage directions, emphasis spans, or a leaked role label were removed).
@@ -52,6 +51,11 @@ class TurnRecord:
 
     def to_dict(self) -> dict:
         return self.__dict__.copy()
+
+
+#: Fields a replayed transcript row is allowed to populate. Older transcripts
+#: carry fields that later versions dropped; replaying them must not fail.
+_TURN_FIELDS = frozenset(TurnRecord.__dataclass_fields__)
 
 
 class Session:
@@ -99,7 +103,6 @@ class Session:
         patient_text: str,
         therapist_tokens: int | None = None,
         patient_tokens: int | None = None,
-        unconscious_revealed: bool = False,
         symptom_discussion_started: bool = False,
         hazard_flags: list[str] | None = None,
         therapist_text_raw: str | None = None,
@@ -113,7 +116,6 @@ class Session:
             patient_text:                 What the patient said
             therapist_tokens:             Token count for therapist response
             patient_tokens:               Token count for patient response
-            unconscious_revealed:         Whether unconscious agenda was active
             symptom_discussion_started:   Whether the patient began explicitly
                                           talking about symptoms on this turn
             hazard_flags:                 Any hazard signals detected this turn
@@ -133,7 +135,6 @@ class Session:
             patient_model=self.patient_model,
             therapist_tokens=therapist_tokens,
             patient_tokens=patient_tokens,
-            unconscious_revealed=unconscious_revealed,
             symptom_discussion_started=symptom_discussion_started,
             therapist_text_raw=therapist_text_raw,
             patient_text_raw=patient_text_raw,
@@ -357,18 +358,6 @@ class Session:
         """
         return [(r.patient_text, r.therapist_text) for r in self.transcript]
 
-    def get_tail(self, n: int = 5) -> str:
-        """
-        Return the last n turns as a plain text string.
-        Used by hazard_monitor and unconscious_agenda trigger checking.
-        """
-        recent = self.transcript[-n:]
-        parts = []
-        for r in recent:
-            parts.append(f"Patient: {r.patient_text}")
-            parts.append(f"Therapist: {r.therapist_text}")
-        return "\n".join(parts)
-
     def _safe_filename_part(self, value: str) -> str:
         """
         Convert text into a safe filename part.
@@ -459,7 +448,9 @@ def resume_session(session_id: str) -> Session:
                 line = line.strip()
                 if line:
                     data = json.loads(line)
-                    record = TurnRecord(**data)
+                    record = TurnRecord(
+                        **{k: v for k, v in data.items() if k in _TURN_FIELDS}
+                    )
                     session.transcript.append(record)
                     session.turn_count = record.turn
 

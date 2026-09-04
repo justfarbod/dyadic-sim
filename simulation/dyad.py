@@ -116,19 +116,8 @@ class Dyad:
             console.print(f"\n[dim]-- Turn {turn_num} --[/dim]")
 
             history = self.session.get_history()
-            tail = self.session.get_tail(n=4)
 
             # --- Patient turn ---
-
-            unconscious_active = self.patient_prior.check_reveal_trigger(
-                transcript_tail=tail,
-                current_turn=turn_num,
-            )
-            if unconscious_active and not getattr(self, "_revealed_logged", False):
-                console.print(
-                    "[bold yellow]Unconscious agenda revealed[/bold yellow]"
-                )
-                self._revealed_logged = True
 
             # First turn: patient opens; subsequent turns: respond to therapist
             if not history:
@@ -141,7 +130,6 @@ class Dyad:
                 state=self.patient_state,
                 history=history,
                 latest_therapist_turn=latest_therapist,
-                include_unconscious=unconscious_active,
             )
 
             patient_response = self.patient_agent.complete(
@@ -248,7 +236,6 @@ class Dyad:
                 patient_text=patient_text,
                 therapist_tokens=therapist_response.output_tokens,
                 patient_tokens=patient_response.output_tokens,
-                unconscious_revealed=unconscious_active,
                 symptom_discussion_started=symptom_discussion_started,
                 hazard_flags=hazard_flags,
                 therapist_text_raw=(

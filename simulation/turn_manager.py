@@ -55,7 +55,6 @@ def build_patient_context(
     state: AgentState,
     history: list[tuple[str, str]],   # list of (patient_text, therapist_text)
     latest_therapist_turn: str,
-    include_unconscious: bool = False,
 ) -> tuple[str, list[Message]]:
     """
     Build system prompt + message list for a patient turn.
@@ -65,14 +64,12 @@ def build_patient_context(
         state:                  The patient's current state
         history:                Past (patient, therapist) turn pairs
         latest_therapist_turn:  The therapist's most recent message
-        include_unconscious:    Whether to reveal the unconscious agenda
 
     Returns:
         (system_prompt, messages) ready to pass to agent.complete()
     """
     system_prompt = prior.build_system_prompt(
         agent_state_summary=state.to_summary(),
-        include_unconscious=include_unconscious,
     )
     # From the patient's perspective: therapist is user, patient is assistant
     swapped = [(t, p) for p, t in history]

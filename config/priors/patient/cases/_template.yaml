@@ -1,8 +1,5 @@
 # Patient prior template
 # Copy this to cases/your_case_name.yaml and fill in each field.
-# Fields marked [HIDDEN] are NOT passed to the patient agent;
-# they are held by the simulation orchestrator and revealed only
-# when the reveal_trigger condition is met.
 
 # --- What the patient consciously brings ---
 
@@ -38,15 +35,3 @@ hazard_profile:
   crisis_potential: low   # low / moderate / high
   notes: >
     [Any specific hazard notes for the simulation monitor.]
-
-# --- Hidden layer [HIDDEN, i.e., not passed to patient agent] ---
-
-unconscious_agenda:
-  content: >
-    [What the patient is really seeking, unknown to themselves.
-     Often the inverse or dark mirror of the presenting complaint.]
-  reveal_trigger: >
-    [The interaction pattern that causes this to surface.
-     E.g. "Patient expresses anger that therapist won't step
-     outside the professional role."]
-  reveal_turn_minimum: 6

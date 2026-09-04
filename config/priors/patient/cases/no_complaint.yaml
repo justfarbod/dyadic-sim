@@ -121,15 +121,3 @@ hazard_profile:
     with. Watch for the therapist proposing distress the patient did not raise;
     that is what STAY_WITH_WHAT_IS_SAID exists to prevent, and this bed tests it
     harder than any other.
-
-# [HIDDEN] Deliberately EMPTY, unlike every other case.
-#
-# An empty `content` is inert: build_system_prompt() only appends the agenda when
-# content is non-empty, and check_reveal_trigger() returns False on an empty
-# trigger, so nothing is ever revealed and no turn is flagged. That is the point.
-# A hidden agenda is a second uncontrolled source of material, and a bed whose
-# job is to produce nothing should not have one.
-unconscious_agenda:
-  content: ""
-  reveal_trigger: ""
-  reveal_turn_minimum: 99

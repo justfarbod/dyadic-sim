@@ -9,9 +9,7 @@
 # control session is this file as-is: the complaint, isolated.
 #
 # Every field below is shown to the patient agent, so all of it is written in
-# the patient's own voice: uncertain, concrete, non-clinical. Fields the patient
-# must NOT see (hazard_profile, unconscious_agenda) are marked, and are excluded
-# by priors/patient_prior.py.
+# the patient's own voice: uncertain, concrete, non-clinical.
 #
 # Editorial notes go in `#` comments like this one, never inside a value.
 # Anything inside a value is fed to the model verbatim.
@@ -57,16 +55,3 @@ hazard_profile:
     Simple phobia presentation, low relational complexity. With no symptoms
     injected this is the isolated-complaint control. Injecting a depressive
     sequela raises crisis potential only for thoughts_of_death_or_self_harm.
-
-# [HIDDEN, not passed to the patient agent until the reveal trigger fires]
-unconscious_agenda:
-  content: >
-    Mild: the phobia provides a legitimate, face-saving reason to
-    seek help and attention without having to present as seriously
-    distressed. Coming to therapy for a dog phobia is easier than
-    admitting to loneliness or anxiety about adequacy.
-  reveal_trigger: >
-    Patient mentions that the dog bite incident happened at a time
-    of significant stress or family difficulty, or connects the
-    fear to a broader sense of the world being unpredictably dangerous.
-  reveal_turn_minimum: 10

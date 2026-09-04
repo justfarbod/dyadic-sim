@@ -29,19 +29,6 @@ class HazardProfile:
 
 
 @dataclass
-class UnconsciousAgenda:
-    """
-    The hidden layer (held by the simulation, not the patient agent).
-    Revealed only when reveal_trigger is matched and
-    reveal_turn_minimum has been reached.
-    """
-    content: str = ""
-    reveal_trigger: str = ""
-    reveal_turn_minimum: int = 6
-    revealed: bool = False
-
-
-@dataclass
 class SymptomDiscussion:
     """
     Tracks whether the patient has begun talking explicitly about symptoms.
@@ -53,9 +40,8 @@ class SymptomDiscussion:
 @dataclass
 class PatientPrior:
     """
-    Complete patient prior.
-    The unconscious_agenda is NOT included in build_system_prompt()
-    unless explicitly revealed by the simulation.
+    Complete patient prior, as rendered into the system prompt by
+    build_system_prompt().
     """
     case_name: str
 
@@ -71,24 +57,15 @@ class PatientPrior:
     # Used by hazard_monitor.py, not in patient prompt
     hazard_profile: HazardProfile = field(default_factory=HazardProfile)
 
-    # Hidden from patient agent until revealed
-    unconscious_agenda: UnconsciousAgenda = field(default_factory=UnconsciousAgenda)
-
     # Runtime tracking
     symptom_discussion: SymptomDiscussion = field(default_factory=SymptomDiscussion)
 
-    def build_system_prompt(
-        self,
-        agent_state_summary: str = "",
-        include_unconscious: bool = False,
-    ) -> str:
+    def build_system_prompt(self, agent_state_summary: str = "") -> str:
         """
         Render the system prompt for a patient turn.
 
         Args:
             agent_state_summary:  the patient's current state narrative
-            include_unconscious:  True only when the simulation has triggered
-                                  the reveal of the unconscious agenda
 
         Returns:
             System prompt string passed to the LLM on each turn.
@@ -135,16 +112,6 @@ class PatientPrior:
                 + self.symptoms.strip()
             )
 
-        if include_unconscious and self.unconscious_agenda.content:
-            sections.append(
-                "## Something Shifting in You\n"
-                "You may not have words for this yet, but something beneath "
-                "your stated reasons for being here is beginning to surface:\n\n"
-                + self.unconscious_agenda.content.strip()
-                + "\n\nYou don't announce this. It shows in how you speak, "
-                "what you press on, what suddenly feels unbearable."
-            )
-
         if agent_state_summary:
             sections.append(
                 "## Your Sense of This Encounter So Far\n"
@@ -161,36 +128,6 @@ class PatientPrior:
         )
 
         return "\n\n---\n\n".join(sections)
-
-    def check_reveal_trigger(self, transcript_tail: str, current_turn: int) -> bool:
-        """
-        Check whether the unconscious agenda should now be revealed.
-
-        Called by the simulation each turn. Returns True the first time
-        the trigger condition is met and turn minimum has been reached.
-
-        Args:
-            transcript_tail: the last few exchanges as a string
-            current_turn:    current turn number (1-indexed)
-
-        Returns:
-            True if the agenda should now be revealed to the patient agent
-        """
-        if self.unconscious_agenda.revealed:
-            return False
-        if current_turn < self.unconscious_agenda.reveal_turn_minimum:
-            return False
-        trigger = self.unconscious_agenda.reveal_trigger.lower().strip()
-        if not trigger:
-            return False
-        trigger_keywords = [w for w in trigger.split() if len(w) > 4]
-        tail_lower = transcript_tail.lower()
-        matches = sum(1 for kw in trigger_keywords if kw in tail_lower)
-        threshold = max(1, int(len(trigger_keywords) * 0.3))
-        if matches >= threshold:
-            self.unconscious_agenda.revealed = True
-            return True
-        return False
 
     def check_symptom_discussion(self, patient_text: str, current_turn: int) -> bool:
         """
@@ -480,13 +417,6 @@ def build_patient_prior(case_name: str) -> PatientPrior:
         notes=hazard_raw.get("notes", ""),
     )
 
-    agenda_raw = raw.get("unconscious_agenda", {})
-    agenda = UnconsciousAgenda(
-        content=agenda_raw.get("content", ""),
-        reveal_trigger=agenda_raw.get("reveal_trigger", ""),
-        reveal_turn_minimum=agenda_raw.get("reveal_turn_minimum", 6),
-    )
-
     symptoms_raw = raw.get("symptoms", {})
     symptom_levels = (
         {str(key): str(value) for key, value in symptoms_raw.items()}
@@ -504,5 +434,4 @@ def build_patient_prior(case_name: str) -> PatientPrior:
         symptoms=_format_symptoms(symptoms_raw),
         symptom_levels=symptom_levels,
         hazard_profile=hazard,
-        unconscious_agenda=agenda,
     )

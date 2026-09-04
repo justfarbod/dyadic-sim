@@ -34,9 +34,9 @@ from analysis.validation.symptom_lexicon import MADRS, PHQ9
 
 CASES_DIR = os.path.join("config", "priors", "patient", "cases")
 
-#: Fields passed to the patient agent. `hazard_profile` and `unconscious_agenda`
-#: are held by the simulation and never reach it, so they cannot leak vocabulary
-#: into speech and are not linted.
+#: Fields passed to the patient agent. Any other top-level key in a case file is
+#: ignored by priors/patient_prior.py, so it cannot leak vocabulary into speech
+#: and is not linted.
 PATIENT_VISIBLE = (
     "presenting_complaint",
     "theory_of_cure",
