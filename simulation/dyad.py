@@ -2,17 +2,18 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
-from agents.base_agent import BaseAgent
 from agents.agent_factory import build_agent
-from memory.state import AgentState
+from agents.base_agent import BaseAgent
 from memory.compressor import compress_turn
-from memory.persistence import save_state_snapshot, load_latest_state
-from priors.therapist_prior import TherapistPrior, build_therapist_prior
+from memory.persistence import load_latest_state, save_state_snapshot
+from memory.state import AgentState
 from priors.patient_prior import PatientPrior, build_patient_prior
-from simulation.session import Session, new_session, resume_session
-from simulation.turn_manager import build_therapist_context, build_patient_context
+from priors.therapist_prior import TherapistPrior, build_therapist_prior
 from simulation.hazard_monitor import HazardMonitor
-from symptom_scoring.config import KNOWN_OPENING_PROMPT
+from simulation.opening import opening_utterance
+from simulation.session import Session, new_session, resume_session
+from simulation.turn_manager import build_patient_context, build_therapist_context
+from simulation.utterance import clean_utterance
 
 console = Console()
 
@@ -54,7 +55,7 @@ class Dyad:
                 self.session.patient_symptom_levels = self.patient_prior.symptom_levels
                 metadata_changed = True
             if not getattr(self.session, "initial_patient_prompt", None):
-                self.session.initial_patient_prompt = KNOWN_OPENING_PROMPT
+                self.session.initial_patient_prompt = opening_utterance()
                 metadata_changed = True
             if patient_id is not None and self.session.patient_id != patient_id:
                 self.session.patient_id = patient_id
@@ -71,7 +72,7 @@ class Dyad:
                 patient_symptom_levels=self.patient_prior.symptom_levels,
                 patient_id=patient_id,
                 conversation_language="en",
-                initial_patient_prompt=KNOWN_OPENING_PROMPT,
+                initial_patient_prompt=opening_utterance(),
             )
 
         # Initialise or restore agent states
@@ -102,7 +103,7 @@ class Dyad:
         )
         console.rule()
 
-        opening_prompt = KNOWN_OPENING_PROMPT
+        opening_prompt = opening_utterance()
 
         start_turn = self.session.turn_count + 1
 
@@ -148,7 +149,8 @@ class Dyad:
                 messages=patient_messages,
                 max_tokens=max_tokens,
             )
-            patient_text = patient_response.content.strip()
+            patient_text_raw = patient_response.content.strip()
+            patient_text = clean_utterance(patient_text_raw)
 
             symptom_discussion_started = self.patient_prior.check_symptom_discussion(
                 patient_text=patient_text,
@@ -167,28 +169,29 @@ class Dyad:
             hazard_report = self.hazard_monitor.check_turn(patient_text, turn_num)
             hazard_flags = []
 
+            # OBSERVE-ONLY. Detection runs and is recorded; it no longer stops
+            # the session.
+            #
+            # `CRISIS_SIGNALS` is bare substring containment - no word
+            # boundaries, no context - so it fires on things that are not crisis
+            # language at all. Every trigger in the corpus so far was spurious,
+            # four of them on "end it" inside the word "pretend it", one on
+            # "can't go on walks in the park", one on being hurt while fleeing a
+            # dog. Each cost the session the rest of its turns, which is a worse
+            # outcome than not pausing: it silently truncates a transcript and
+            # the truncation then looks like data.
+            #
+            # The defect is the GATE, not the detector, so only the gate is
+            # removed. Turns still carry a `crisis` flag and `hazard_summary`
+            # still records every hit, which is what a better matcher will have
+            # to be built and tested against. Restoring the pause is a decision
+            # for that version, not this one.
             if hazard_report.crisis_detected:
+                hazard_flags.append("crisis")
                 console.print(
-                    Panel(
-                        "[bold red] Crisis language detected. "
-                        "Simulation paused.[/bold red]\n"
-                        "Review the transcript before continuing.\n"
-                        f"Signals: {hazard_report.crisis_signals}",
-                        border_style="red",
-                    )
+                    f"[yellow] Crisis-signal match at turn {turn_num} "
+                    f"(recorded, not paused): {hazard_report.crisis_signals}[/yellow]"
                 )
-                self.session.append_turn(
-                    therapist_text="",
-                    patient_text=patient_text,
-                    therapist_tokens=None,
-                    patient_tokens=patient_response.output_tokens,
-                    unconscious_revealed=unconscious_active,
-                    symptom_discussion_started=symptom_discussion_started,
-                    hazard_flags=["crisis"],
-                )
-                save_state_snapshot(self.patient_state, self.session.session_dir, turn_num)
-                self.session.save_metadata({"paused_at_turn": turn_num, "reason": "crisis"})
-                break
 
             if hazard_report.frame_pressure_detected:
                 hazard_flags.append("frame_pressure")
@@ -210,7 +213,8 @@ class Dyad:
                 messages=therapist_messages,
                 max_tokens=max_tokens,
             )
-            therapist_text = therapist_response.content.strip()
+            therapist_text_raw = therapist_response.content.strip()
+            therapist_text = clean_utterance(therapist_text_raw)
 
             _print_turn("Therapist", therapist_text, "cyan")
 
@@ -247,6 +251,12 @@ class Dyad:
                 unconscious_revealed=unconscious_active,
                 symptom_discussion_started=symptom_discussion_started,
                 hazard_flags=hazard_flags,
+                therapist_text_raw=(
+                    therapist_text_raw if therapist_text_raw != therapist_text else None
+                ),
+                patient_text_raw=(
+                    patient_text_raw if patient_text_raw != patient_text else None
+                ),
             )
 
         console.rule("[bold]Session complete[/bold]")
@@ -257,6 +267,12 @@ class Dyad:
         """
         If the last recorded turn has an empty therapist response (crisis
         pause), run the therapist side now so the session can continue.
+
+        Retained for sessions recorded while the hazard monitor still paused
+        generation. No new session can end this way - the monitor is
+        observe-only - but `--resume` may be pointed at an older transcript,
+        and a half-turn there would otherwise leave the therapist side blank
+        for the rest of the run.
         """
         if not self.session.transcript:
             return
@@ -281,7 +297,8 @@ class Dyad:
             messages=therapist_messages,
             max_tokens=max_tokens,
         )
-        therapist_text = therapist_response.content.strip()
+        therapist_text_raw = therapist_response.content.strip()
+        therapist_text = clean_utterance(therapist_text_raw)
 
         _print_turn("Therapist", therapist_text, "cyan")
 

@@ -7,12 +7,9 @@ import re
 from pathlib import Path
 from typing import Any
 
-from symptom_scoring.config import (
-    KNOWN_OPENING_PROMPT,
-    PHQ_SYMPTOM_LABELS,
-)
+from simulation.opening import V1_OPENING
+from symptom_scoring.config import PHQ_SYMPTOM_LABELS
 from symptom_scoring.types import SessionSource, TurnPair
-
 
 _REFERENTIAL_REPLY = re.compile(
     r"^\s*(?:[\(\[].*?[\)\]]\s*)?"
@@ -33,7 +30,9 @@ def read_jsonl(path: Path) -> list[dict[str, Any]]:
             except json.JSONDecodeError as exc:
                 raise ValueError(f"Invalid JSON on {path}:{line_number}: {exc}") from exc
             if not isinstance(row, dict):
-                raise ValueError(f"Expected a JSON object on {path}:{line_number}")
+                # ValueError, not TypeError: this is a malformed file, the same
+                # kind of failure as the decode error above, not a bad argument.
+                raise ValueError(f"Expected a JSON object on {path}:{line_number}")  # noqa: TRY004
             rows.append(row)
     return rows
 
@@ -83,7 +82,7 @@ def detect_echo_artifact(
 
 def build_turn_pairs(
     source: SessionSource,
-    legacy_prompt_fallback: str | None = KNOWN_OPENING_PROMPT,
+    legacy_prompt_fallback: str | None = V1_OPENING,
 ) -> list[TurnPair]:
     """Pair each patient row with the therapist message from the previous row."""
 

@@ -1,6 +1,9 @@
-from dataclasses import dataclass, field
-from priors.loader import load_patient_case
 import re
+from dataclasses import dataclass, field
+
+from priors.loader import load_patient_case
+from simulation.utterance import SPEECH_ONLY_INSTRUCTION
+from symptom_scoring.config import PHQ_SYMPTOM_LABELS
 
 
 @dataclass
@@ -153,7 +156,8 @@ class PatientPrior:
             "Speak as this person speaks, in their register, their rhythm. "
             "You are not trying to be a good patient. You are trying to get "
             "something, avoid something, or understand something. "
-            "One to five sentences. Raw, not polished."
+            "One to five sentences. Raw, not polished.\n\n"
+            + SPEECH_ONLY_INSTRUCTION
         )
 
         return "\n\n---\n\n".join(sections)
@@ -431,17 +435,9 @@ def _format_symptoms(symptoms_raw) -> str:
         ),
     }
 
-    symptom_labels = {
-        "lack_of_pleasure": "Little interest or pleasure in doing things",
-        "depressed_mood": "Feeling down, depressed, or hopeless",
-        "sleep_problems": "Sleep problems",
-        "low_energy": "Feeling tired or having little energy",
-        "appetite_changes": "Poor appetite or overeating",
-        "feelings_of_failure_or_guilt": "Feeling bad about yourself, guilty, or like a failure",
-        "concentration_problems": "Trouble concentrating",
-        "psychomotor_changes": "Moving or speaking slowly, or feeling restless",
-        "thoughts_of_death_or_self_harm": "Thoughts that you would be better off dead or of hurting yourself",
-    }
+    # Imported, not redeclared: these strings go into the prompt and are the
+    # same ones the analysis compares reference wordings against.
+    symptom_labels = PHQ_SYMPTOM_LABELS
 
     if isinstance(symptoms_raw, dict):
         lines = []
@@ -458,7 +454,7 @@ def _format_symptoms(symptoms_raw) -> str:
                 "frequency level not recognized; use common sense to decide how much it should affect you"
             )
 
-            lines.append(f"- {label}: {frequency} — {meaning}")
+            lines.append(f"- {label}: {frequency}; {meaning}")
 
         return "\n".join(lines)
     return str(symptoms_raw).strip()

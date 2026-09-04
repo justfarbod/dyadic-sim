@@ -27,12 +27,6 @@ FREQUENCY_VALUES = {
     "nearly every day": 3,
 }
 
-KNOWN_OPENING_PROMPT = (
-    "You have just arrived for a therapy session. "
-    "The therapist is present and waiting. Say what brings you here."
-)
-
-
 @dataclass(frozen=True)
 class ScoringConfig:
     """Runtime settings shared by every session in one evaluation process."""

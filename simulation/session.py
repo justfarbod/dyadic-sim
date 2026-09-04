@@ -7,24 +7,26 @@ Provides the append_turn() interface used by dyad.py.
 """
 
 import json
+import re
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, UTC
-from pathlib import Path
+from datetime import UTC, datetime
 from html import escape
-import re
+from pathlib import Path
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import (
-    SimpleDocTemplate,
-    Paragraph,
-    Spacer,
     KeepTogether,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
 )
+
+from simulation.utterance import GENERATION_VERSION
 
 SESSIONS_DIR = Path("data/sessions")
 
@@ -41,6 +43,10 @@ class TurnRecord:
     patient_tokens: int | None
     unconscious_revealed: bool
     symptom_discussion_started: bool = False
+    # Pre-cleaning text, recorded only when clean_utterance() changed something
+    # (stage directions, emphasis spans, or a leaked role label were removed).
+    therapist_text_raw: str | None = None
+    patient_text_raw: str | None = None
     hazard_flags: list[str] = field(default_factory=list)
     timestamp: str = field(default_factory=lambda: datetime.now(UTC).replace(tzinfo=None).isoformat())
 
@@ -96,6 +102,8 @@ class Session:
         unconscious_revealed: bool = False,
         symptom_discussion_started: bool = False,
         hazard_flags: list[str] | None = None,
+        therapist_text_raw: str | None = None,
+        patient_text_raw: str | None = None,
     ) -> TurnRecord:
         """
         Record a completed turn to the transcript.
@@ -109,6 +117,9 @@ class Session:
             symptom_discussion_started:   Whether the patient began explicitly
                                           talking about symptoms on this turn
             hazard_flags:                 Any hazard signals detected this turn
+            therapist_text_raw:           Pre-cleaning therapist text, passed only
+                                          when cleaning removed something
+            patient_text_raw:             Pre-cleaning patient text, same
 
         Returns:
             The TurnRecord appended to the transcript
@@ -124,6 +135,8 @@ class Session:
             patient_tokens=patient_tokens,
             unconscious_revealed=unconscious_revealed,
             symptom_discussion_started=symptom_discussion_started,
+            therapist_text_raw=therapist_text_raw,
+            patient_text_raw=patient_text_raw,
             hazard_flags=hazard_flags or [],
         )
         self.transcript.append(record)
@@ -134,8 +147,6 @@ class Session:
 
         # Also update the human-readable PDF transcript.
         self.save_pdf_transcript()
-
-        return record
 
         return record
 
@@ -215,14 +226,9 @@ class Session:
             spaceAfter=8,
         )
 
-        flag_style = ParagraphStyle(
-            "Flags",
-            parent=styles["Normal"],
-            fontSize=8,
-            leading=11,
-            textColor=colors.HexColor("#666666"),
-            spaceAfter=8,
-        )
+        # NOTE: hazard_flags are recorded per turn but never rendered in the PDF.
+        # The style that was defined for them here was unused, so it is gone; add
+        # it back with the rendering if the flags should appear in transcripts.
 
         story = []
 
@@ -273,9 +279,38 @@ class Session:
 
 
     def save_metadata(self, extra: dict | None = None) -> None:
-        """Write / update session metadata."""
+        """Write / update session metadata.
+
+        Merges into whatever is already on disk. This used to rebuild the dict
+        from scratch and apply only the current `extra`, so successive calls
+        discarded each other's extras: a crisis wrote `paused_at_turn`, the
+        loop broke, and the closing `hazard_summary` write wiped it. Nine
+        sessions in the existing corpus carry crisis events with no record that
+        they were paused, which is where that trace went.
+        """
+        existing: dict = {}
+        if self._metadata_path.exists():
+            try:
+                with open(self._metadata_path, encoding="utf-8") as handle:
+                    loaded = json.load(handle)
+                if isinstance(loaded, dict):
+                    existing = loaded
+            except (OSError, json.JSONDecodeError):
+                existing = {}
+
         meta = {
             "metadata_schema_version": 2,
+            # What the agents were told to produce and what was done to their
+            # output; see simulation/utterance.py. Absent == version 1 (pilot).
+            "generation_version": GENERATION_VERSION,
+            # Whether the hazard monitor could STOP a session, as opposed to
+            # merely flagging turns. Recorded separately from
+            # `generation_version` on purpose: the version marks corpora that
+            # are not comparable, and this setting is unobservable in any
+            # session where the monitor never fired - which is all but a
+            # handful. Bumping the version for it would announce a split that
+            # does not exist. See simulation/dyad.py.
+            "hazard_monitor": "observe_only",
             "session_id": self.session_id,
             "patient_id": self.patient_id,
             "therapist_model": self.therapist_model,
@@ -292,8 +327,10 @@ class Session:
             "pdf_transcript_path": str(self._pdf_path),
         }
 
+        merged = {**existing, **meta}
         if extra:
-            meta.update(extra)
+            merged.update(extra)
+        meta = merged
 
         with open(self._metadata_path, "w", encoding="utf-8") as f:
             json.dump(meta, f, indent=2, ensure_ascii=False)
@@ -311,8 +348,7 @@ class Session:
                 setattr(last, key, value)
         # Rewrite full transcript (file is small)
         with open(self._transcript_path, "w") as f:
-            for record in self.transcript:
-                f.write(json.dumps(record.to_dict()) + "\n")
+            f.writelines(json.dumps(record.to_dict()) + "\n" for record in self.transcript)
 
     def get_history(self) -> list[tuple[str, str]]:
         """

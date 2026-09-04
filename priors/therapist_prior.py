@@ -7,7 +7,12 @@ then renders a system prompt to be injected at the start of each turn.
 """
 
 from dataclasses import dataclass, field
+
 from priors.loader import load_therapist_base, load_therapist_variant
+from simulation.utterance import (
+    SPEECH_ONLY_INSTRUCTION,
+    STAY_WITH_WHAT_IS_SAID,
+)
 
 
 @dataclass
@@ -79,9 +84,12 @@ class TherapistPrior:
         sections.append(
             "## How to Respond\n"
             "Respond as this therapist would, in the moment, in the room. "
-            "Do not describe what you are doing. Do not explain your technique. "
+            "Do not explain your technique. "
             "Simply speak. One to four sentences is usually enough. "
-            "Say less than you think you need to."
+            "Say less than you think you need to.\n\n"
+            + STAY_WITH_WHAT_IS_SAID
+            + "\n\n"
+            + SPEECH_ONLY_INSTRUCTION
         )
 
         return "\n\n---\n\n".join(sections)
