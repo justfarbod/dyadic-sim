@@ -89,7 +89,21 @@ _BLANK_LINES = re.compile(r"\n{3,}")
 #      simulation/opening.py. The old text instructed the patient to state the
 #      presenting complaint, which templated turn 1; the new one invites a broad
 #      answer without naming any symptom domain.
-GENERATION_VERSION = 3
+#   4  The generator is reduced to priors + cases + symptoms. Removed: the
+#      hidden "unconscious agenda" (a second, uncontrolled source of patient
+#      material, revealed mid-session on a keyword trigger), the hazard monitor
+#      (already observe-only; its substring matcher only ever produced false
+#      positives), and per-turn LLM state compression (an agent-written
+#      "state summary" injected into every system prompt, doubling the calls
+#      per turn and shifting what the patient said for reasons unrelated to
+#      the injected symptom). The system prompt is now the prior alone and the
+#      context is the transcript alone. Transcript rows lose
+#      `unconscious_revealed` and `hazard_flags`; metadata loses
+#      `hazard_monitor` and `hazard_summary`; no state snapshots are written.
+#      Sessions from earlier versions still load (unknown fields are ignored),
+#      but base rates measured on them do not carry over: treat the first v4
+#      batch as a new pilot.
+GENERATION_VERSION = 4
 
 # Shared by both priors so the therapist and the patient are held to the same
 # rule. Phrased concretely: an earlier, vaguer "Do not describe what you are
