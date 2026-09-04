@@ -57,11 +57,12 @@ no human coding has been performed. Until it has, the correct phrasing is "the
 lexicon fired on 17% of sleep-injected sessions", never "17% of patients reported
 sleep problems". Full record: `manuscript/VALIDATION.md`.
 
-**Generator version.** Sessions produced by this branch are `generation_version: 4`:
+**Generator version.** Sessions produced by this branch are `generation_version: 5`:
 prior + case + symptoms only, with no hidden agenda, no hazard monitor and no per-turn
-state compression (see `simulation/utterance.py` for the changelog). Every existing
-corpus, including `power01`, was generated at version 3. Base rates do not carry
-across versions, so the first v4 batch is a new pilot, not the confirmatory run.
+state compression, and a therapist prior that does not supply emotion words or go
+looking for a problem (see `simulation/utterance.py` for the changelog). `power01` was
+generated at version 3. Base rates do not carry across versions, so the first batch at
+the current version is a new pilot, not the confirmatory run.
 
 ---
 

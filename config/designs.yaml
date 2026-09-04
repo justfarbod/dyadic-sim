@@ -29,12 +29,13 @@
 # anything.
 #
 # `generation_version` and `hazard_monitor` below describe the generator that
-# PRODUCED each arm; they are provenance, not settings. Every arm listed here
-# was generated at version 3 with the observe-only monitor. The current
-# generator is version 4 (no hidden agenda, no hazard monitor, no state
-# compression; see simulation/utterance.py), so a new arm declares
-# `generation_version: 4` and omits `hazard_monitor`. Arms at different versions
-# are not comparable and must not share a prefix.
+# PRODUCED each arm; they are provenance, not settings. power01 and the first
+# two bedchecks were generated at version 3 with the observe-only monitor;
+# bedcheck03 at version 4 (no hidden agenda, no hazard monitor, no state
+# compression). The current generator is version 5 (therapist prior tightened;
+# see simulation/utterance.py), so a new arm declares `generation_version: 5`
+# and omits `hazard_monitor`. Arms at different versions are not comparable and
+# must not share a prefix.
 
 bedcheck03:
   description: >

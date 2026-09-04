@@ -109,12 +109,12 @@ def test_old_case_file_loads_and_hidden_blocks_never_reach_the_prompt(monkeypatc
     assert not hasattr(prior, "hazard_profile")
 
 
-def test_new_session_metadata_is_version_4_without_monitor_keys(sessions_dir):
+def test_new_session_metadata_carries_current_version_without_monitor_keys(sessions_dir):
     s = new_session("m", "m", "afraid_of_dogs", "cbt")
     meta = json.loads((s.session_dir / "metadata.json").read_text())
 
-    assert GENERATION_VERSION == 4
-    assert meta["generation_version"] == 4
+    assert GENERATION_VERSION >= 4  # 4 is where the monitor and agenda were removed
+    assert meta["generation_version"] == GENERATION_VERSION
     assert "hazard_monitor" not in meta
     assert "hazard_summary" not in meta
     assert not list(s.session_dir.glob("*_state_snapshots.json"))
