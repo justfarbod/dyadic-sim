@@ -8,21 +8,13 @@ from pathlib import Path
 
 import yaml
 
+from symptom_scoring.config import PHQ_SYMPTOM_LABELS
 
 CASES_DIR = Path("config/priors/patient/cases")
 BASE_CASE_NAME = "empty_and_invisible"
 
-SYMPTOM_KEYS = [
-    "lack_of_pleasure",
-    "depressed_mood",
-    "sleep_problems",
-    "low_energy",
-    "appetite_changes",
-    "feelings_of_failure_or_guilt",
-    "concentration_problems",
-    "psychomotor_changes",
-    "thoughts_of_death_or_self_harm",
-]
+# Derived, not restated: order and membership follow the prompt vocabulary.
+SYMPTOM_KEYS = list(PHQ_SYMPTOM_LABELS)
 
 
 def load_case(case_name: str) -> dict:
@@ -34,7 +26,8 @@ def load_case(case_name: str) -> dict:
         data = yaml.safe_load(f)
 
     if not isinstance(data, dict):
-        raise ValueError(f"Case file must contain a YAML mapping: {path}")
+        # Malformed file, not a bad argument, so ValueError is right here.
+        raise ValueError(f"Case file must contain a YAML mapping: {path}")  # noqa: TRY004
 
     return data
 
@@ -53,13 +46,40 @@ def build_no_symptoms_case(base_case: dict) -> dict:
 
 
 def build_single_symptom_case(
-    base_case: dict, active_symptom: str, active_frequency: str = "nearly every day"
+    base_case: dict,
+    active_symptom: str,
+    active_frequency: str = "nearly every day",
+    injection: str = "all_nine",
 ) -> dict:
+    """Write the symptom block the patient prior renders into the prompt.
+
+    Two schemes, differing only in whether the eight inactive symptoms appear:
+
+    ``all_nine`` (default, and what every session to date used)
+        All nine PHQ-9 items, eight of them reading "not at all". Those eight
+        still *name* their symptom in the prompt ("Thoughts that you would be
+        better off dead: not at all"), which is the point of contention: naming
+        them may prime the patient to touch on them, inflating the within-session
+        denominator that `target_z` divides by. Kept originally to avoid the
+        model inventing levels for unnamed domains, an assumption that was never
+        measured.
+
+    ``active_only`` (lever A in manuscript/VALIDATION.md)
+        Only the active symptom's line. Tests whether dropping the eight
+        negatives sharpens within-session contrast, and whether the feared
+        hallucinated variance actually appears.
+    """
+    if injection not in {"all_nine", "active_only"}:
+        raise ValueError(f"Unknown injection scheme: {injection!r}")
+
     case_data = copy.deepcopy(base_case)
-    case_data["symptoms"] = {
-        key: (active_frequency if key == active_symptom else "not at all")
-        for key in SYMPTOM_KEYS
-    }
+    if injection == "active_only":
+        case_data["symptoms"] = {active_symptom: active_frequency}
+    else:
+        case_data["symptoms"] = {
+            key: (active_frequency if key == active_symptom else "not at all")
+            for key in SYMPTOM_KEYS
+        }
     return case_data
 
 
@@ -124,10 +144,33 @@ def main() -> None:
         choices=["several days", "more than half the days", "nearly every day"],
         help="PHQ-9 frequency anchor for the active symptom (default: nearly every day)",
     )
+    parser.add_argument(
+        "--injection",
+        choices=["all_nine", "active_only"],
+        default="all_nine",
+        help=(
+            "How the symptom block is written. 'all_nine' (default) lists all 9 "
+            "PHQ-9 items with 8 reading 'not at all'; 'active_only' lists just "
+            "the active symptom (lever A). Affects generation, so the two are "
+            "separate experimental arms; never mix them in one prefix."
+        ),
+    )
     parser.add_argument("--orientation", default="cbt", help="Therapist orientation")
     parser.add_argument("--turns", type=int, default=10, help="Turns per run")
     parser.add_argument("--max-tokens", type=int, default=300, help="Max tokens per response")
     parser.add_argument("--repeats", type=int, default=5, help="How many runs per condition")
+    parser.add_argument(
+        "--start-run",
+        type=int,
+        default=1,
+        help=(
+            "First run number to use. Defaults to 1. Set it when topping up an "
+            "existing cell so the new sessions continue the numbering instead "
+            "of colliding: a cell already at n=5 tops up with "
+            "--start-run 6 --repeats 5, giving run_6..run_10. Check current "
+            "coverage with analysis/validation/design_status.py."
+        ),
+    )
     parser.add_argument(
         "--prefix",
         default="batch",
@@ -143,10 +186,43 @@ def main() -> None:
         action="store_true",
         help="Keep generated YAML files instead of deleting them afterward",
     )
+    parser.add_argument(
+        "--no-control",
+        action="store_true",
+        help="Skip the no_symptoms runs. Every invocation otherwise generates one "
+             "control per run number before the symptom runs, so topping up a "
+             "single cell silently regenerates controls at run numbers that "
+             "already exist. Use this when filling a gap in an existing design; "
+             "check coverage first with analysis/validation/design_status.py.",
+    )
+
+    parser.add_argument(
+        "--control-only",
+        action="store_true",
+        help="Generate ONLY the no_symptoms runs, no injected arms. The mirror of "
+             "--no-control. Use it to validate a new patient case before "
+             "committing a grid to it: generate its control arm alone and read "
+             "the base rate of every symptom. A case that produces a symptom "
+             "with nothing injected has no headroom for that symptom, and it is "
+             "cheaper to find that out from one arm than from ten.",
+    )
 
     args = parser.parse_args()
 
-    if args.symptoms:
+    if args.control_only and args.no_control:
+        parser.error("--control-only and --no-control together would generate nothing")
+
+    if args.control_only:
+        symptom_keys = []
+    elif args.symptoms is not None and not args.symptoms.strip():
+        # Explicitly empty is almost certainly an attempt to say "no symptoms",
+        # and it used to fall through to the default of ALL NINE - turning an
+        # intended 100-session control arm into a 1000-session grid. Say so.
+        parser.error(
+            "--symptoms was given but empty. For the control arm alone use "
+            "--control-only; omitting --symptoms runs all nine."
+        )
+    elif args.symptoms:
         symptom_keys = [s.strip() for s in args.symptoms.split(",") if s.strip()]
         invalid = [s for s in symptom_keys if s not in SYMPTOM_KEYS]
         if invalid:
@@ -158,7 +234,10 @@ def main() -> None:
     generated_case_paths: list[Path] = []
 
     try:
-        for i in range(1, args.repeats + 1):
+        run_numbers = range(args.start_run, args.start_run + args.repeats)
+
+        control_runs = () if args.no_control else run_numbers
+        for i in control_runs:
             case_name = f"{args.prefix}_{args.case}_no_symptoms_run_{i}"
             case_data = build_no_symptoms_case(base_case)
             generated_case_paths.append(write_case(case_name, case_data))
@@ -174,9 +253,11 @@ def main() -> None:
             )
 
         for symptom_key in symptom_keys:
-            for i in range(1, args.repeats + 1):
+            for i in run_numbers:
                 case_name = f"{args.prefix}_{args.case}_{symptom_key}_run_{i}"
-                case_data = build_single_symptom_case(base_case, symptom_key, args.frequency)
+                case_data = build_single_symptom_case(
+                    base_case, symptom_key, args.frequency, injection=args.injection
+                )
                 generated_case_paths.append(write_case(case_name, case_data))
 
                 run_session(
@@ -206,6 +287,6 @@ if __name__ == "__main__":
     except subprocess.CalledProcessError as e:
         print(f"\nA run failed with exit code {e.returncode}.", file=sys.stderr)
         sys.exit(e.returncode)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - CLI entry point: report and exit, never traceback
         print(f"\nError: {e}", file=sys.stderr)
         sys.exit(1)

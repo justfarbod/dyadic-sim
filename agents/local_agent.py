@@ -10,10 +10,10 @@ Pull a model before using: `ollama pull llama3.1`
 """
 
 import os
-from openai import OpenAI
-from openai import APIConnectionError
 
-from agents.base_agent import BaseAgent, Message, AgentResponse
+from openai import APIConnectionError, OpenAI
+
+from agents.base_agent import AgentResponse, BaseAgent, Message
 
 
 class LocalAgent(BaseAgent):
@@ -24,10 +24,20 @@ class LocalAgent(BaseAgent):
         self.base_url = base_url or os.getenv(
             "OLLAMA_BASE_URL", "http://localhost:11434"
         )
-        # Ollama's OpenAI-compatible endpoint
+        # Ollama's OpenAI-compatible endpoint.
+        #
+        # The timeout is load-bearing, not defensive boilerplate. Left unset,
+        # the OpenAI client defaults to 600s with retries, so a hung Ollama
+        # request stalls a batch for ~30 minutes in complete silence. That
+        # happened during the power01 run: the model was evicted mid-batch and
+        # generation sat at 2 turns for 28 minutes before anyone looked. A turn
+        # normally takes ~18s, so 180s is already ten times slack; failing fast
+        # and loudly is worth more than tolerating one slow request.
         self._client = OpenAI(
             base_url=f"{self.base_url}/v1",
             api_key="ollama",  # Ollama ignores the key but the client requires one
+            timeout=float(os.getenv("OLLAMA_TIMEOUT", "180")),
+            max_retries=int(os.getenv("OLLAMA_MAX_RETRIES", "2")),
         )
 
     def complete(
@@ -63,5 +73,7 @@ class LocalAgent(BaseAgent):
             return any(self.model in m.id for m in models.data)
         except APIConnectionError:
             return False
-        except Exception:
+        # Backstop for a health check: specific transport errors are caught
+        # above, and anything else still means 'not available'.
+        except Exception:  # noqa: BLE001
             return False
