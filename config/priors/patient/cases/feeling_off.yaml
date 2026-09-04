@@ -1,34 +1,10 @@
 # Patient case: feeling_off
-#
-# The NEUTRAL test bed (lever D in manuscript/VALIDATION.md). Someone with no
-# particular complaint, who has felt vaguely not-themselves and came because it
-# seemed like the thing to do.
-#
-# Why this case exists. The other three each fight the measurement in their own
-# way. afraid_of_dogs crowds the session out with a topic orthogonal to the
-# symptom, so an injected sequela has nowhere to go. empty_and_invisible and
-# only_love_can_save_me supply so much ambient depressive material that the
-# target competes with siblings the theme itself put there, which flattens
-# within-session contrast. This case does neither: there is no dominant topic to
-# crowd out the symptom, and no ambient depressive load to flood the denominator.
-# An injected sequela should be the only salient thing in the room, which is the
-# cleanest possible condition for target_z.
-#
-# It is also the strongest control. With nothing injected, a session here should
-# stay unremarkable. If symptoms appear anyway, that is the model inventing
-# them, and it bounds the false-positive rate for every other case.
-#
-# NO symptoms block, same as the others.
-#
-# Patient-visible fields are all first person.
+# Written as the neutral bed; known to seed depressed_mood vocabulary
+# ("not myself"). Kept as a documented failure; no_complaint replaces it.
+# All fields are shown to the patient agent, first person. No symptoms block:
+# run_symptom_experiments.py injects one per condition; as-is, this is the control.
+# Design notes and revision history: manuscript/CASES.md
 
-# DO NOT add somatic or mood detail here, however ordinary it sounds. A draft
-# of this case carried "maybe a bit more tired than usual, nothing dramatic".
-# In a live 3-turn run with nothing injected, the patient went from that to
-# "even things I used to enjoy" and "I don't get that buzz anymore": low_energy
-# and lack_of_pleasure both surfaced in what is supposed to be a clean control.
-# One mild clause was enough of a thread to pull. The vagueness below is the
-# point of the case, not an oversight.
 presenting_complaint: >
   I'm not really sure what to say, to be honest. Nothing's wrong exactly.
   Work is fine, things at home are fine. I've just felt a bit off for a
@@ -53,9 +29,6 @@ transference_expectation: >
   grateful things are as good as they are. I'm half expecting you to tell
   me there's nothing to work on.
 
-# Deliberately the lightest resistance in the set: plays things down on first
-# pass, but gives way when asked again. Nothing that would keep material out of
-# a session, which matters for a bed meant to show what surfaces on its own.
 resistance_structure: >
   If you ask how something was I'll say it was fine, and I'll probably mean
   it at the time. If you ask again I'll usually give you a straighter

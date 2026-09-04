@@ -1,18 +1,8 @@
 # Patient case: afraid_of_dogs
-#
-# Overarching theme: a specific phobia. Deliberately ORTHOGONAL to the PHQ-9
-# depression domains, which makes it the hard test bed: an injected depressive
-# sequela has to find its own way into a session that is otherwise about dogs.
-#
-# NO symptoms block. The theme is the case; which sequelae (if any) the person
-# also carries is supplied per condition by run_symptom_experiments.py. A
-# control session is this file as-is: the complaint, isolated.
-#
-# Every field below is shown to the patient agent, so all of it is written in
-# the patient's own voice: uncertain, concrete, non-clinical.
-#
-# Editorial notes go in `#` comments like this one, never inside a value.
-# Anything inside a value is fed to the model verbatim.
+# A specific phobia; orthogonal to the PHQ-9 depression domains (the hard bed).
+# All fields are shown to the patient agent, first person. No symptoms block:
+# run_symptom_experiments.py injects one per condition; as-is, this is the control.
+# Design notes and revision history: manuscript/CASES.md
 
 presenting_complaint: >
   I'm terrified of dogs. It seems irrational, most of them are probably
@@ -27,9 +17,6 @@ theory_of_cure: >
   dangerous, I know that, but I'm still so afraid. I just need to learn to
   be less afraid of them.
 
-# First person: how the patient would describe themselves, not an attachment
-# classification. The clinical read ("generally secure attachment, low
-# transference") is a formulation ABOUT them and does not belong in their head.
 relational_pattern: >
   I get on with people well enough. I can laugh at myself about this, it's
   easier than having people feel sorry for me. I usually assume people mean
@@ -39,8 +26,6 @@ transference_expectation: >
   I think you'll know what to do and help me do it. This feels like a
   practical problem that should have a practical solution.
 
-# Again first person: what they would notice themselves doing, not
-# "resistance structure ... rather than deep relational resistance".
 resistance_structure: >
   When it comes to actually doing something about it, going near a dog or
   making a plan for the weekend, I find reasons to put it off.

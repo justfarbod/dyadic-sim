@@ -353,7 +353,9 @@ cp config/priors/patient/cases/_template.yaml \
 Open the file and fill in each field. Everything in it is shown to the patient agent,
 so write it in the patient's own voice and keep symptom vocabulary out of it
 (`tests/test_case_priors.py` checks this). Symptoms are added per condition by
-`run_symptom_experiments.py`, never written into the case.
+`run_symptom_experiments.py`, never written into the case. Case headers say only what
+the case is; the design notes and revision history for every case live in
+`manuscript/CASES.md` (research record, gitignored).
 
 ## Piloting Strategy
 

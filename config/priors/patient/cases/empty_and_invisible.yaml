@@ -1,15 +1,8 @@
 # Patient case: empty_and_invisible
-#
-# Overarching theme: feeling unseen. This theme OVERLAPS the PHQ-9 depression
-# domains, so several injected sequelae are already ambient in the presentation.
-# That makes it the flooded test bed: expression is easy, within-session
-# contrast is hard, because the target competes with siblings the theme itself
-# supplies. See VALIDATION.md, bottleneck #2.
-#
-# NO symptoms block. Sequelae are supplied per condition by
-# run_symptom_experiments.py; this file as-is is the isolated-complaint control.
-#
-# Patient-visible fields are all first person.
+# Feeling unseen; overlaps the depression domains (a flooded bed).
+# All fields are shown to the patient agent, first person. No symptoms block:
+# run_symptom_experiments.py injects one per condition; as-is, this is the control.
+# Design notes and revision history: manuscript/CASES.md
 
 presenting_complaint: >
   I go through my days feeling invisible. I can be in a room full of
@@ -26,9 +19,6 @@ theory_of_cure: >
   when I look at it from the outside. But knowing it doesn't seem to
   change anything.
 
-# Was a clinical formulation: "Avoidant with an anxious core. Presents as
-# self-sufficient and analytical. Tends to pre-empt rejection by devaluing."
-# Rewritten as the person's own sense of how they operate.
 relational_pattern: >
   I manage on my own. I'd rather work something out myself than ask, and
   I'm usually the one people come to, not the other way round. If I get
@@ -42,8 +32,6 @@ transference_expectation: >
   explain myself, and we'll spend the whole time on that, and the part
   that actually hurts will never come up.
 
-# Was: "Intellectualises. Brings insight rather than feeling. Becomes slightly
-# competitive with the therapist's interpretations."
 resistance_structure: >
   I explain things rather than feel them. I'll bring you an insight about
   myself instead of the thing itself, and I talk about my emotions from a

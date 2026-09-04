@@ -1,7 +1,7 @@
-# Patient prior template
-# Copy this to cases/your_case_name.yaml and fill in each field.
-
-# --- What the patient consciously brings ---
+# Patient prior template. Copy to cases/<name>.yaml and fill in the five fields
+# in the patient's own voice: first person, concrete, no symptom vocabulary
+# (tests/test_case_priors.py checks). No symptoms block: run_symptom_experiments.py
+# injects one per condition. Design notes for the existing cases: manuscript/CASES.md
 
 presenting_complaint: >
   [What the patient says they are there for.
@@ -12,16 +12,13 @@ theory_of_cure: >
    This is often wrong, and the gap between this and what
    therapy can offer is where the drama lives.]
 
-# --- How the patient characteristically organises relationships ---
-
 relational_pattern: >
-  [Attachment style, characteristic moves in intimacy.
-   E.g. anxious / avoidant / seeks merger / tests loyalty.]
+  [How I am with people, in my own words: who I let in, what I do when
+   someone gets close or pulls away. Not an attachment classification.]
 
 transference_expectation: >
-  [What the patient expects the therapist to eventually do or become.
-   Usually a repetition of a formative relational experience.]
+  [What I expect you, the therapist, will eventually do or turn out to be.]
 
 resistance_structure: >
-  [What the patient does to avoid what they most need.
-   E.g. intellectualises / becomes very pleasing / goes silent.]
+  [What I notice myself doing when something gets close: explaining
+   instead of feeling, agreeing too readily, going quiet, changing the subject.]
