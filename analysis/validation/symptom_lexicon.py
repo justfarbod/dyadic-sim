@@ -591,6 +591,3 @@ MADRS = {
 }
 
 MADRS_PATTERNS = as_patterns(MADRS)
-
-# Compiled forms, mirroring PHQ9_PATTERNS / MADRS_PATTERNS.
-HAZARD_PATTERNS = {k: v.pattern().pattern for k, v in HAZARD_TIERS.items()}

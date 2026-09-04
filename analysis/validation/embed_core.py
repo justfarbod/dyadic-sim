@@ -18,7 +18,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from analysis.validation.quality import flagged_turn_indices, qc_fields
+from analysis.validation.quality import filter_turns, flagged_turn_indices, qc_fields
 from analysis.validation.sessions import (
     BOUNDED_UNITS,
     iter_sessions,
@@ -127,8 +127,7 @@ def score_corpus(scorer: ReferenceScorer, session_globs, *, prefix=None,
             continue
         units = text_units(d, unit=unit, clean=clean, model=model)
         if qc_view == "drop-flagged-turns":
-            dropped = flagged_turn_indices(qc)
-            units = [(i, t) for i, t in units if i not in dropped]
+            units = filter_turns(units, flagged_turn_indices(qc))
 
         row = {"model": meta.get("patient_model", "?"),
                "patient_model": meta.get("patient_model", "?"),

@@ -36,6 +36,7 @@ from analysis.validation.embed_core import (
     summarise,
 )
 from analysis.validation.naive_prevalence import scan
+from analysis.validation.paths import ARCHIVE
 from analysis.validation.sessions import COMPLETE, CRISIS_TERMINATED
 from symptom_scoring.prior_vocabulary import REFERENCES
 
@@ -163,8 +164,7 @@ def main() -> int:
     ap.add_argument("--prefixes", nargs="+", default=["power01"])
     ap.add_argument("--out-dir", default=os.path.join("data", "results", "tierC"))
     ap.add_argument("--archive-root",
-                    default=os.path.join("data", "_archive",
-                                         "pre_pipeline_rebuild_2026-08-13"))
+                    default=os.path.join(ARCHIVE, "pre_pipeline_rebuild_2026-08-13"))
     args = ap.parse_args()
     os.makedirs(args.out_dir, exist_ok=True)
 

@@ -35,13 +35,19 @@ from priors import patient_prior
 from run_symptom_experiments import SYMPTOM_KEYS
 from symptom_scoring.config import PHQ_SYMPTOM_LABELS
 from symptom_scoring.instruments.madrs import PHQ_MAPPING_QUALITY, PHQ_TO_TOPIC
-from symptom_scoring.prior_vocabulary import LABELS
+from symptom_scoring.prior_vocabulary import KEYS, LABELS
 
 CANONICAL = list(PHQ_SYMPTOM_LABELS)
 
 
 def test_there_are_nine_items():
     assert len(CANONICAL) == 9
+
+
+def test_keys_is_the_canonical_order():
+    """KEYS is the tuple every consumer derives its order from; pin it."""
+    assert tuple(CANONICAL) == KEYS
+    assert list(KEYS) == SYMPTOM_KEYS
 
 
 def test_every_consumer_uses_the_same_keys_in_the_same_order():

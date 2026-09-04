@@ -84,17 +84,3 @@ def evaluate(
         "spec_version": spec["version"],
         "spec_status": spec["status"],
     }
-
-
-def format_verdict(name: str, result: dict) -> str:
-    lines = [(f"{name}: {result['verdict'].upper()} "
-              f"(spec {result['spec_version']}, {result['spec_status']})")]
-    for key, check in result["checks"].items():
-        mark = "pass" if check["passed"] else "FAIL"
-        value = check["value"]
-        shown = "n/a" if value is None else (
-            f"{value:+.2f}" if isinstance(value, float) else str(value))
-        extra = f"  ({check['note']})" if check.get("note") else ""
-        lines.append(f"    {mark:4s}  {key:22s} {shown:>8s}"
-                     f"  threshold {check['threshold']}{extra}")
-    return "\n".join(lines)

@@ -256,11 +256,6 @@ def base_rates(df, panel, speaker="patient"):
     return grid.reindex(columns=[s for s in PANELS[panel] if s in grid.columns])
 
 
-def _panel_grids(df, panel, speaker, kind):
-    """The three views, selected by name so write_figures stays declarative."""
-    return {"rate": matrix, "base": base_rates, "contrast": contrast}[kind](df, panel, speaker)
-
-
 SPEAKER_QUESTION = {
     "patient": "does the patient's own vocabulary show the symptom?",
     "therapist": "does the THERAPIST take up the symptom's vocabulary?",

@@ -262,14 +262,6 @@ def patient_text(session_dir: str, clean: bool = False) -> str:
     return " ".join(chunks)
 
 
-def therapist_text(session_dir: str, clean: bool = False) -> str:
-    path = os.path.join(session_dir, "transcript.jsonl")
-    with open(path) as handle:
-        tx = [json.loads(l) for l in handle if l.strip()]
-    texts = ((t.get("therapist_text") or "") for t in tx)
-    return " ".join(clean_utterance(t) if clean else t for t in texts)
-
-
 # --------------------------------------------------------------------------
 # Session status.
 #

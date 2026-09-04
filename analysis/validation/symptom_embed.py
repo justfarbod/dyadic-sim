@@ -114,22 +114,13 @@ from analysis.validation.embed_core import (
     ReferenceScorer,
     add_control_contrast,
     build_references,
+    report_coverage,
+    score_corpus,
     summarise,
 )
 from analysis.validation.heatmap import DIVERGING, draw_panels
 from analysis.validation.paths import ACTIVE_PREFIX, ACTIVE_RESULTS, ACTIVE_SESSIONS
-from analysis.validation.quality import (
-    flagged_turn_indices,
-    qc_fields,
-)
-from analysis.validation.sessions import (
-    BOUNDED_UNITS,
-    UNITS,
-    iter_sessions,
-    n_tokens,
-    patient_turns,
-    text_units,
-)
+from analysis.validation.sessions import UNITS
 from symptom_scoring.prior_vocabulary import REFERENCES
 
 # Default = the active corpus, paired with ACTIVE_RESULTS as the output. Keep
@@ -410,98 +401,24 @@ def main():
     )
     print(f"references: {args.references} ({scorer.describe()})")
 
-    # gather sessions (model comes from metadata, not directory layout)
-    metas, sims, best_turns = [], [], []
-    unit_counts, over_limit, qc_rows = [], [], []  # required reporting
-    used_dirs = []  # exactly the sessions this run consumed, for provenance
-    for d, meta, prefix, case, symptom, run in iter_sessions(args.sessions):
-        if args.prefix and prefix != args.prefix:
-            continue
-        used_dirs.append(d)
-        # Both roles stored. `model` is the PATIENT model, because every measure
-        # here scores patient speech; grouping patient expression by the therapist
-        # model was an inconsistency with naive_prevalence.py and would silently
-        # mislabel cross-model dyads (invisible so far only because every dyad to
-        # date is same-model).
-        metas.append({"model": meta.get("patient_model", "?"),
-                      "patient_model": meta.get("patient_model", "?"),
-                      "therapist_model": meta.get("therapist_model", "?"),
-                      "case": case, "symptom": symptom, "run": run,
-                      "session_id": meta["session_id"]})
-        # One shared unit extractor for every mode, so `turn` cannot drift from
-        # `bounded-turn`. Each symptom keeps its best unit: different symptoms
-        # may peak in different places, which is the point - the question is
-        # whether it was reported anywhere, not whether the whole text leans.
-        units = text_units(d, unit=args.unit, clean=args.clean_text, model=model)
-        # QC is computed on TURNS, whatever unit the scoring uses, so a flagged
-        # turn stays identifiable after chunking. Content is never dropped
-        # silently: view 1 keeps everything, view 2 removes flagged turns,
-        # view 3 is applied downstream by excluding flagged sessions.
-        qc = qc_fields(patient_turns(d, clean=args.clean_text), meta)
-        qc_rows.append(qc)
-        if args.qc_view == "drop-flagged-turns":
-            dropped = flagged_turn_indices(qc)
-            units = [(i, t) for i, t in units if i not in dropped]
-        if not units:
-            sims.append(np.full(len(SYMPTOMS), np.nan))
-            best_turns.append([None] * len(SYMPTOMS))
-            unit_counts.append(0)
-            over_limit.append(0)
-            continue
-        sizes = [n_tokens(model, t) for _, t in units]
-        unit_counts.append(len(units))
-        over_limit.append(sum(1 for s in sizes if s > model.max_seq_length))
-        per_unit = scorer.score([t for _, t in units])
-        # How a session's units collapse to one score per symptom. `max` asks
-        # "was it said anywhere" and is the historical choice, but a maximum
-        # grows with the number of units, so it rewards longer sessions for
-        # length. Averaging the top k keeps the "anywhere" question while
-        # damping that; `mean` abandons it entirely.
-        order = np.argsort(-per_unit, axis=0)
-        k = (per_unit.shape[0] if args.unit_agg == "mean"
-             else 1 if args.unit_agg == "max"
-             else min(int(args.unit_agg[3:]), per_unit.shape[0]))
-        sims.append(np.take_along_axis(per_unit, order[:k], axis=0).mean(axis=0))
-        winners = [units[order[0, j]][0] for j in range(per_unit.shape[1])]
-        best_turns.append(winners)
-        # The question session-level QC counts cannot answer: was the turn that
-        # DROVE the score a flagged one? A reassuring 4% session rate is no
-        # comfort if those turns are the ones supplying the maxima.
-        qc["max_from_flagged_turn"] = bool(set(winners) & flagged_turn_indices(qc))
-    if not metas:
+    # One corpus loop, shared with the robustness check and rerun.py, so text
+    # units, cleaning, QC and unit counting cannot drift between the measure and
+    # its own robustness check. `qc_view` is applied inside it: view 2 drops
+    # flagged turns, view 3 drops flagged sessions.
+    result = score_corpus(scorer, args.sessions, prefix=args.prefix,
+                          unit=args.unit, clean=args.clean_text,
+                          unit_agg=args.unit_agg, qc_view=args.qc_view)
+    if not result["rows"]:
         raise SystemExit(f"No sessions matched: {args.sessions}")
-
-    # Prohibit silent truncation on any path that claims full coverage. `session`
-    # and `turn` are retained to reproduce historical numbers and are allowed to
-    # overflow - loudly.
-    total_over = sum(over_limit)
-    if total_over:
-        message = (f"{total_over} of {sum(unit_counts)} embedding inputs exceed "
-                   f"the model's {model.max_seq_length}-token limit and would be "
-                   f"silently truncated")
-        if args.unit in BOUNDED_UNITS:
-            raise SystemExit(f"{message}. This is a bug in the chunker, not a "
-                             f"tolerable condition for --unit {args.unit}.")
-        print(f"  WARNING: {message}. --unit {args.unit} is a reproduction mode; "
-              f"use --unit bounded-turn for guaranteed coverage.")
-    sims = np.vstack(sims)  # (n_sessions, 9)
+    used_dirs = result["used_dirs"]  # exactly the sessions this run consumed
+    # Refuses silent truncation in the bounded modes; warns in the reproduction
+    # modes (`session`, `turn`), which are allowed to overflow - loudly.
+    report_coverage(result, args.unit, model.max_seq_length)
 
     rows = []
-    for meta, srow, turns_of, n_units, n_over, qc in zip(
-            metas, sims, best_turns, unit_counts, over_limit, qc_rows, strict=True):
-        d = dict(meta)
-        # Max-over-units grows with the number of units, so an arm with
-        # systematically fewer units is scored lower for that reason alone.
-        # Carried per session so the imbalance is checkable rather than assumed.
-        d["n_units"] = n_units
-        d["n_units_over_limit"] = n_over
-        d.update(qc)
-        for s, v, turn in zip(SYMPTOMS, srow, turns_of, strict=True):
-            d[f"sim_{s}"] = float(v)
-            if turn is not None:
-                # Which turn drove this symptom's score, so any cell can be
-                # read back against the transcript.
-                d[f"turn_{s}"] = turn
+    for row in result["rows"]:
+        d = dict(row)
+        srow = np.array([d[f"sim_{s}"] for s in SYMPTOMS], dtype=float)
         mu, sd = srow.mean(), srow.std()
         # Per-symptom z for EVERY session, controls included. Controls have no
         # target, but they do have a lean, and A1 needs it: without a z per
@@ -514,11 +431,11 @@ def main():
             others = np.delete(srow, k)
             osd = others.std()
             d[f"zloo_{s}"] = float((srow[k] - others.mean()) / osd) if osd > 0 else np.nan
-        if meta["symptom"] in SYMPTOMS and sd > 0:
-            tgt = srow[SYMPTOMS.index(meta["symptom"])]
+        if d["symptom"] in SYMPTOMS and sd > 0:
+            tgt = srow[SYMPTOMS.index(d["symptom"])]
             d["target_sim"] = float(tgt)
-            d["target_z"] = d[f"z_{meta['symptom']}"]
-            d["target_z_loo"] = d[f"zloo_{meta['symptom']}"]
+            d["target_z"] = d[f"z_{d['symptom']}"]
+            d["target_z_loo"] = d[f"zloo_{d['symptom']}"]
             d["target_rank"] = int((srow > tgt).sum() + 1)  # 1 = most similar
         else:
             d["target_sim"] = d["target_z"] = d["target_z_loo"] = np.nan

@@ -8,13 +8,13 @@ from pathlib import Path
 
 import yaml
 
-from symptom_scoring.config import PHQ_SYMPTOM_LABELS
+from symptom_scoring.prior_vocabulary import KEYS
 
 CASES_DIR = Path("config/priors/patient/cases")
 BASE_CASE_NAME = "empty_and_invisible"
 
-# Derived, not restated: order and membership follow the prompt vocabulary.
-SYMPTOM_KEYS = list(PHQ_SYMPTOM_LABELS)
+# Derived, not restated: order and membership follow the prior vocabulary.
+SYMPTOM_KEYS = list(KEYS)
 
 
 def load_case(case_name: str) -> dict:

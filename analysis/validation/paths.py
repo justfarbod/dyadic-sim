@@ -16,8 +16,8 @@ Layout. The primary split is raw vs derived; local vs external applies to raw:
 Every raw session sits at exactly one level below its bucket, so one glob shape
 reads any batch.
 
-`EXTERNAL_SETS` is keyed by the manifest's `model` label, not by directory name:
-those keys become the `model` column in the output CSVs, so they must stay
+`external_sets()` is keyed by the manifest's `model` label, not by directory
+name: those keys become the `model` column in the output CSVs, so they must stay
 stable even if a directory is renamed.
 """
 from __future__ import annotations
@@ -131,10 +131,6 @@ def verify(path: str = MANIFEST) -> list[tuple[str, bool, str]]:
         actual = fingerprint(source["path"])
         report.append((source["dir"], actual == source.get("fingerprint"), actual))
     return report
-
-
-# Backwards-compatible module-level view used by the validation scripts.
-EXTERNAL_SETS = external_sets()
 
 
 def main() -> int:
