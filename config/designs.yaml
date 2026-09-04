@@ -36,6 +36,27 @@
 # `generation_version: 4` and omits `hazard_monitor`. Arms at different versions
 # are not comparable and must not share a prefix.
 
+bedcheck03:
+  description: >
+    First look at the 2026-09-04 rewording of `no_complaint` (garage project,
+    "doing well", "nothing wrong underneath"; see manuscript/CASES.md) under
+    generation_version 4. Control arm only, five sessions: enough to read the
+    nine base rates against bedcheck01 before anything larger is committed.
+  cases: [no_complaint]
+  conditions: [no_symptoms]
+  runs: 5
+  therapist_model: mistral-nemo
+  patient_model: mistral-nemo
+  generation_version: 4
+  injection: active_only        # moot for a control arm; matched to power01
+  turns: 10
+  inclusion: all_valid
+  notes: >
+    The generator changed as well as the wording (no hidden agenda, no hazard
+    monitor, no state compression), so a difference from bedcheck01 is not
+    attributable to the wording alone. Read it as "is this bed clean now", not
+    as an A/B of the two texts.
+
 bedcheck02:
   description: >
     Bed validation, second wording. The control arm of `no_complaint` after the
