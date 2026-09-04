@@ -1,167 +1,195 @@
 """
 Reference-robustness check.
 
-The embedding manipulation check (symptom_embed.py) compared patient speech to
-hand-written reference sentences. Magnitudes therefore depend on *my* wording.
-Here we repeat the identical within-session target_z analysis using the EXACT
-PHQ-9 item labels that the simulation itself put into the patient prompt
-(priors.patient_prior._format_symptoms -> symptom_labels). If the +/- signature
-survives a reference swap, it reflects the data, not the wording.
+`symptom_embed.py` compares patient speech to hand-written reference sentences,
+so its magnitudes depend on *our* wording. This repeats the identical analysis
+under three reference sets and correlates the per-(model, symptom) contrast. If
+the +/- signature survives a reference swap, it reflects the data rather than
+the phrasing.
 
-We run THREE reference sets and correlate the per-(model,symptom) target_z:
-  A: hand-written sentences (original, from symptom_embed.py)
-  B: PHQ-9 short labels (what the patient actually saw)
-  C: PHQ-9 label + "nearly every day" frequency clause (full prompt line)
+  A: hand-written sentences (the ones the measure actually uses)
+  B: the EXACT PHQ-9 labels the simulation put into the patient prompt
+  C: the same labels plus the "nearly every day" frequency clause
 
-Outputs:
-  - symptom_embed_robust.csv          target_z per model x symptom x refset
-  - fig_symptom_embed_robust.png      A vs B vs C, with 95% CI
-  - prints Pearson r between ref sets (agreement of the signature)
+**Everything except the reference set is shared with the primary analysis.**
+Session discovery and inclusion, text units and chunking, cleaning, matched
+controls, unit and reference aggregation, QC fields, provenance and the summary
+estimand all come from `embed_core`. That was not true before: this script
+concatenated whole sessions and embedded them directly, which exceeds the
+model's 256-token limit in every session, so it was silently validating a
+truncated *opening-only* measure while claiming to test the turn-level one. It
+also dropped control sessions, computed no matched-control contrast, and wrote
+no provenance. A robustness analysis must vary only its declared dimension.
+
+Outputs (in --out-dir):
+  - symptom_embed_robust.csv                  per-session scores per refset
+  - fig_symptom_embed_robust.png              A vs B vs C, with intervals
+  - symptom_embed_robust.analysis_config.json provenance
 """
 from __future__ import annotations
-import json, glob, os, re
+
+import argparse
+import os
+
+import matplotlib
 import numpy as np
 import pandas as pd
-import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from analysis.embeddings import get_model, EMBEDDINGS_AVAILABLE
-from analysis.validation.paths import EXTERNAL_SETS, BASELINE_FULL
 
-HERE = BASELINE_FULL  # outputs written next to the full 300-session baseline
-SETS = EXTERNAL_SETS
+from analysis.embeddings import EMBEDDINGS_AVAILABLE, get_model
+from analysis.validation import provenance
+from analysis.validation.embed_core import (
+    ReferenceScorer,
+    add_control_contrast,
+    report_coverage,
+    score_corpus,
+    summarise,
+)
+from analysis.validation.paths import ACTIVE_PREFIX, ACTIVE_RESULTS, ACTIVE_SESSIONS
+from analysis.validation.sessions import UNITS
+from symptom_scoring.prior_vocabulary import LABELS, REFERENCES
 
-SYMPTOMS = [
-    "lack_of_pleasure", "depressed_mood", "sleep_problems", "low_energy",
-    "appetite_changes", "feelings_of_failure_or_guilt", "concentration_problems",
-    "psychomotor_changes", "thoughts_of_death_or_self_harm",
-]
+DEFAULT_SESSIONS = [ACTIVE_SESSIONS]
 
-# A: original hand-written sentences
-REF_A = {
-    "lack_of_pleasure": "I have little interest or pleasure in doing things; nothing feels enjoyable anymore.",
-    "depressed_mood": "I feel down, depressed, sad, and hopeless most of the time.",
-    "sleep_problems": "I have trouble sleeping; I can't fall or stay asleep, or I sleep too much.",
-    "low_energy": "I feel tired and have very little energy; I am exhausted and worn out.",
-    "appetite_changes": "My appetite has changed; I have a poor appetite or I am overeating.",
-    "feelings_of_failure_or_guilt": "I feel bad about myself, like a failure, worthless, and guilty.",
-    "concentration_problems": "I have trouble concentrating and focusing; my mind won't stay on things.",
-    "psychomotor_changes": "I move or speak slowly, or I feel so restless and fidgety I can't sit still.",
-    "thoughts_of_death_or_self_harm": "I have thoughts that I would be better off dead or of hurting myself.",
-}
-# B: EXACT PHQ-9 labels from patient_prior.py:458-468 (what the patient saw)
-REF_B = {
-    "lack_of_pleasure": "Little interest or pleasure in doing things",
-    "depressed_mood": "Feeling down, depressed, or hopeless",
-    "sleep_problems": "Sleep problems",
-    "low_energy": "Feeling tired or having little energy",
-    "appetite_changes": "Poor appetite or overeating",
-    "feelings_of_failure_or_guilt": "Feeling bad about yourself, guilty, or like a failure",
-    "concentration_problems": "Trouble concentrating",
-    "psychomotor_changes": "Moving or speaking slowly, or feeling restless",
-    "thoughts_of_death_or_self_harm": "Thoughts that you would be better off dead or of hurting yourself",
-}
-# C: full prompt line with the active-symptom frequency clause
+# Imported, never restated. This script exists to validate the measure
+# symptom_embed.py produces; a local copy that drifted from the shared
+# REFERENCES would silently stop testing the real thing and still report
+# agreement between the reference sets.
+SYMPTOMS = list(REFERENCES)
+
 _CLAUSE = "; over the last two weeks, you have been bothered by this symptom nearly every day"
-REF_C = {k: v + _CLAUSE for k, v in REF_B.items()}
-REFSETS = {"A_handwritten": REF_A, "B_phq9_label": REF_B, "C_phq9_full_line": REF_C}
-
-
-def parse_case(case_name):
-    m = re.match(r"batch_(.+?)_run_(\d+)$", case_name)
-    body, run = m.group(1), int(m.group(2))
-    for c in ("only_love_can_save_me", "empty_and_invisible", "afraid_of_dogs"):
-        if body.startswith(c):
-            return c, (body[len(c):].lstrip("_") or "no_symptoms"), run
-    return body, "?", run
-
-
-def patient_text(d):
-    tx = [json.loads(l) for l in open(os.path.join(d, "transcript.jsonl")) if l.strip()]
-    chunks = []
-    for i, t in enumerate(tx):
-        p = (t.get("patient_text") or "").strip()
-        if i > 0 and p and p == (tx[i-1].get("therapist_text") or "").strip():
-            continue
-        if p:
-            chunks.append(p)
-    return " ".join(chunks)
+REFSETS = {
+    # A: straight from the measure under test.
+    "A_handwritten": {s: (REFERENCES[s],) for s in SYMPTOMS},
+    # B: the same object priors.patient_prior renders, so "what the patient saw"
+    # cannot go stale here.
+    "B_phq9_label": {s: (LABELS[s],) for s in SYMPTOMS},
+    # C: the full prompt line, frequency clause included.
+    "C_phq9_full_line": {s: (LABELS[s] + _CLAUSE,) for s in SYMPTOMS},
+}
 
 
 def main():
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    ap.add_argument("--sessions", nargs="+", default=DEFAULT_SESSIONS)
+    ap.add_argument("--prefix", default=ACTIVE_PREFIX,
+                    help="Only include sessions whose case_name prefix matches. Defaults "
+                         "to the active corpus; pass --prefix '' for everything.")
+    ap.add_argument("--out-dir", default=ACTIVE_RESULTS)
+    ap.add_argument("--unit", choices=list(UNITS), default="bounded-turn",
+                    help="Same units as the primary analysis. Defaults to "
+                         "bounded-turn rather than the historical session, "
+                         "which truncated every input.")
+    ap.add_argument("--unit-agg", choices=["max", "top2", "top3", "mean"],
+                    default="max")
+    ap.add_argument("--qc-view", choices=["all", "drop-flagged-turns",
+                                          "drop-flagged-sessions"], default="all")
+    ap.add_argument("--clean-text", action="store_true",
+                    help="Must match the setting used for symptom_embed.py, or "
+                         "the two are not comparable.")
+    args = ap.parse_args()
+    os.makedirs(args.out_dir, exist_ok=True)
+
     if not EMBEDDINGS_AVAILABLE:
         raise SystemExit("sentence-transformers not available")
     model = get_model()
 
-    # gather sessions + patient embeddings once
-    meta_rows, texts = [], []
-    for mname, pat in SETS.items():
-        for d in sorted(glob.glob(pat)):
-            mp = os.path.join(d, "metadata.json")
-            if not (os.path.isdir(d) and os.path.exists(mp)):
-                continue
-            meta = json.load(open(mp))
-            case, symptom, run = parse_case(meta["case_name"])
-            if symptom not in SYMPTOMS:
-                continue  # drop no_symptoms (no target)
-            meta_rows.append(dict(model=mname, case=case, symptom=symptom, run=run))
-            texts.append(patient_text(d))
-    emb = model.encode(texts, normalize_embeddings=True, batch_size=32, show_progress_bar=False)
+    frames, used_dirs = [], []
+    for name, refs in REFSETS.items():
+        scorer = ReferenceScorer(model, refs, agg="mean")
+        result = score_corpus(scorer, args.sessions, prefix=args.prefix,
+                              unit=args.unit, clean=args.clean_text,
+                              unit_agg=args.unit_agg, qc_view=args.qc_view)
+        if not result["rows"]:
+            raise SystemExit(f"No sessions matched: {args.sessions} prefix={args.prefix}")
+        report_coverage(result, args.unit, model.max_seq_length)
+        used_dirs = result["used_dirs"]
 
+        df = pd.DataFrame(result["rows"])
+        # Within-session z, then the matched-control contrast: the SAME
+        # standardisation and the SAME estimand as the primary. Controls are
+        # kept, not dropped, because the contrast is computed from them.
+        sims = df[[f"sim_{s}" for s in SYMPTOMS]].to_numpy()
+        mu, sd = sims.mean(axis=1, keepdims=True), sims.std(axis=1, keepdims=True)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            z = np.where(sd > 0, (sims - mu) / sd, np.nan)
+        for k, s in enumerate(SYMPTOMS):
+            df[f"z_{s}"] = z[:, k]
+        df["target_z"] = [
+            row[f"z_{row['symptom']}"] if row["symptom"] in SYMPTOMS else np.nan
+            for _, row in df.iterrows()
+        ]
+        df = add_control_contrast(df, SYMPTOMS)
+        df["refset"] = name
+        frames.append(df)
+        print(f"  {name}: {scorer.describe()}")
+
+    df = pd.concat(frames, ignore_index=True)
+    provenance.write(args.out_dir, script=os.path.basename(__file__), args=args,
+                     inputs={"n_sessions": int(df.session_id.nunique()),
+                             "refsets": list(REFSETS)},
+                     session_dirs=used_dirs)
+    out_csv = os.path.join(args.out_dir, "symptom_embed_robust.csv")
+    df.to_csv(out_csv, index=False)
+
+    # One estimator for every output, shared with the primary analysis.
     rows = []
-    for refname, refmap in REFSETS.items():
-        ref_emb = model.encode([refmap[s] for s in SYMPTOMS], normalize_embeddings=True)
-        sims = emb @ ref_emb.T
-        for meta, srow in zip(meta_rows, sims):
-            mu, sd = srow.mean(), srow.std()
-            tgt = srow[SYMPTOMS.index(meta["symptom"])]
-            rows.append(dict(refset=refname, **meta,
-                             target_z=float((tgt - mu) / sd) if sd > 0 else np.nan))
-    df = pd.DataFrame(rows)
-    df.to_csv(os.path.join(HERE, "symptom_embed_robust.csv"), index=False)
+    for name in REFSETS:
+        sub = df[df.refset == name]
+        for m in sorted(sub.model.unique()):
+            for s in SYMPTOMS:
+                if s not in set(sub.symptom):
+                    continue
+                st = summarise(sub, "target_z_vs_control", m, s)
+                rows.append({"refset": name, "model": m, "symptom": s,
+                             "contrast": st["point"], "lo": st["lo"],
+                             "hi": st["hi"], "cohens_d": st["cohens_d"],
+                             "n_injected": st["n_injected"],
+                             "n_control": st["n_control"]})
+    agg = pd.DataFrame(rows)
 
-    # per model x symptom x refset mean + CI
-    agg = (df.groupby(["refset", "model", "symptom"])
-             .agg(z=("target_z", "mean"), sd=("target_z", "std"), n=("target_z", "size"))
-             .reset_index())
-    agg["ci95"] = 1.96 * agg["sd"] / np.sqrt(agg["n"])
+    print("\n== per-symptom contrast vs matched control, by reference set ==")
+    wide = agg.pivot_table(index=["model", "symptom"], columns="refset", values="contrast")
+    print(wide.to_string(float_format=lambda v: f"{v:+.3f}"))
 
-    # agreement of the signature across reference sets (per model)
-    print("== Pearson r of per-symptom target_z between reference sets ==")
-    print("   (high r = the +/- signature is robust to reference wording)\n")
-    wide = agg.pivot_table(index=["model", "symptom"], columns="refset", values="z")
-    for mname in SETS:
-        w = wide.loc[mname]
-        rAB = np.corrcoef(w["A_handwritten"], w["B_phq9_label"])[0, 1]
-        rAC = np.corrcoef(w["A_handwritten"], w["C_phq9_full_line"])[0, 1]
-        rBC = np.corrcoef(w["B_phq9_label"], w["C_phq9_full_line"])[0, 1]
-        print(f"  {mname}: r(A,B)={rAB:.2f}  r(A,C)={rAC:.2f}  r(B,C)={rBC:.2f}")
-    print()
-    print("== overall mean target_z by refset x model (should stay ~0) ==")
-    print(df.groupby(["refset", "model"])["target_z"].mean()
-            .unstack("model").to_string(float_format=lambda x: f"{x:+.3f}"))
+    print("\n== agreement of the signature across reference wordings ==")
+    for m in sorted(agg.model.unique()):
+        w = wide.loc[m].dropna()
+        if len(w) < 3:
+            print(f"  {m}: only {len(w)} symptom(s); r not meaningful")
+            continue
+        names = list(REFSETS)
+        for i in range(len(names)):
+            for j in range(i + 1, len(names)):
+                r = np.corrcoef(w[names[i]], w[names[j]])[0, 1]
+                print(f"  {m}: r({names[i][0]},{names[j][0]}) = {r:+.2f}")
 
-    # figure: per symptom, 3 refsets side by side, pooled across models
-    pooled = (df.groupby(["refset", "symptom"])
-                .agg(z=("target_z", "mean"), sd=("target_z", "std"), n=("target_z", "size"))
-                .reset_index())
-    pooled["ci95"] = 1.96 * pooled["sd"] / np.sqrt(pooled["n"])
-    fig, ax = plt.subplots(figsize=(11, 7))
-    y = np.arange(len(SYMPTOMS))
+    present = [s for s in SYMPTOMS if s in set(agg.symptom)]
+    fig, ax = plt.subplots(figsize=(11, max(4, 0.7 * len(present) + 1.5)))
+    y = np.arange(len(present))
     offs = {"A_handwritten": 0.27, "B_phq9_label": 0.0, "C_phq9_full_line": -0.27}
-    for refname, off in offs.items():
-        sub = pooled[pooled.refset == refname].set_index("symptom").reindex(SYMPTOMS)
-        ax.barh(y + off, sub["z"].values, height=0.26, xerr=sub["ci95"].values,
-                error_kw=dict(ecolor="0.3", lw=0.8, capsize=2), label=refname)
+    for name, off in offs.items():
+        sub = (agg[agg.refset == name].groupby("symptom")[["contrast", "lo", "hi"]]
+               .mean().reindex(present))
+        point = sub["contrast"].to_numpy()
+        err = np.vstack([np.nan_to_num(point - sub["lo"].to_numpy(), nan=0.0),
+                         np.nan_to_num(sub["hi"].to_numpy() - point, nan=0.0)])
+        ax.barh(y + off, point, height=0.26, xerr=err,
+                error_kw={"ecolor": "0.3", "lw": 0.8, "capsize": 2}, label=name)
     ax.axvline(0, color="k", lw=0.8)
-    ax.set_yticks(y); ax.set_yticklabels(SYMPTOMS, fontsize=9)
-    ax.set_xlabel("within-session target_z (pooled over models; bars = 95% CI)")
-    ax.set_title("Reference-robustness: target_z under 3 reference wordings")
+    ax.set_yticks(y)
+    ax.set_yticklabels(present, fontsize=9)
+    ax.set_xlabel("contrast vs matched control (pooled over models)")
+    ax.set_title(f"Reference robustness, unit={args.unit}, agg={args.unit_agg}")
     ax.legend(fontsize=8)
     fig.tight_layout()
-    out = os.path.join(HERE, "fig_symptom_embed_robust.png")
-    fig.savefig(out, dpi=130)
-    print(f"\nwrote {out} and symptom_embed_robust.csv")
+    out_fig = os.path.join(args.out_dir, "fig_symptom_embed_robust.png")
+    fig.savefig(out_fig, dpi=130)
+    print(f"\nwrote {out_csv}\nwrote {out_fig}")
 
 
 if __name__ == "__main__":
