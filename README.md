@@ -42,6 +42,21 @@ pointing `--instrument` at it, not editing the pipeline.
 
 See [Validation Analyses](#validation-analyses) for how these are run.
 
+### Research status
+
+Everything here is **exploratory**. The pipeline was developed by looking at the
+same two corpora it is now applied to, so its results evaluate feasibility,
+robustness and measurement behaviour — not a preregistered hypothesis. One cell
+(`afraid_of_dogs` × `sleep_problems`, n=63 per arm) separates injected from control
+on two independent instruments and shows no leak into non-sleep arms; most cells do
+not, and one symptom with a *larger* raw lift fails on specificity.
+
+**No automated measure here has been validated against human judgement.** The
+blinded coding protocol is written and the sampling and scoring code is dry-run, but
+no human coding has been performed. Until it has, the correct phrasing is "the
+lexicon fired on 17% of sleep-injected sessions", never "17% of patients reported
+sleep problems". Full record: `manuscript/VALIDATION.md`.
+
 ---
 
 ## Agents and Priors
@@ -77,16 +92,27 @@ LLMs are stateless: each call re-reads the conversation rather than remembering 
 
 ### Model Flexibility
 
-Any combination of providers works. The same simulation code runs across all of them:
+The same simulation code runs across providers, so any combination is
+*expressible*. What has actually been run is narrower:
 
 ```
 Therapist                Patient
 -----------------------------------------
-claude-sonnet-4-6   x    gpt-4o           # cloud, best quality (planed)
-claude-sonnet-4-6   x    llama3.1         # hybrid, one API call per therapist turn (planed)
-llama3.1            x    mistral-nemo     # fully local (implemented)
-llama3.1            x    llama3.1         # null condition (same model both sides, implemented)
+llama3.1            x    llama3.1         # run: null condition, same model both sides
+mistral-nemo        x    mistral-nemo     # run: null condition, second family
+llama3.1            x    mistral-nemo     # NOT run: does not fit in 12 GB VRAM
+claude-sonnet-4-6   x    gpt-4o           # deferred: cloud, agents implemented
+claude-sonnet-4-6   x    llama3.1         # deferred: hybrid
 ```
+
+**Every session generated so far is a same-model dyad.** The cross-model local
+pair is code-complete but has never run: llama3.1 (5.5 GB resident at 4096
+context) plus mistral-nemo (7.7 GB) exceeds the 11.8 GB free on the development
+machine, so the two would evict and reload each other on every turn. Frontier API
+models are implemented and deliberately deferred to keep the pipeline local and
+reproducible; their entries in `config/models.yaml` are commented out and their
+model IDs are stale. Measured figures and the third-model decision:
+`manuscript/INFRASTRUCTURE.md`.
 
 ---
 
@@ -95,14 +121,17 @@ llama3.1            x    llama3.1         # null condition (same model both side
 ```
 dyadic-sim/
 |
-|-- .env.example                 # API key template: copy to .env and fill in
-|-- .gitignore
-|-- pyproject.toml               # dependencies managed by uv
-|-- run.py                       # entry point
+|-- env.example                  # API key template: copy to .env and fill in
+|-- pyproject.toml               # dependencies managed by uv; pytest pythonpath
+|-- run.py                       # entry point: one session
+|-- run_symptom_experiments.py   # batch-generate symptom-isolated sessions
+|-- evaluate_session_symptoms.py # score existing sessions with the scoring pipeline
 |-- README.md                    # this file
 |
 |-- config/
 |   |-- models.yaml              # model registry + active role assignments
+|   |-- designs.yaml             # expected cells / runs / inclusion policy per arm
+|   |-- analysis_spec.yaml       # frozen analysis parameters + evidence criteria
 |   |-- priors/
 |       |-- therapist/
 |       |   |-- base.yaml        # role, structural, ethical, self, relational priors
@@ -111,9 +140,11 @@ dyadic-sim/
 |       |-- patient/
 |           |-- cases/
 |               |-- _template.yaml              # blank template for new cases
-|               |-- afraid_of_dogs.yaml         # low-hazard baseline case
+|               |-- afraid_of_dogs.yaml         # low-hazard, orthogonal theme
+|               |-- feeling_off.yaml            # intended-neutral bed (it is not; see VALIDATION)
 |               |-- empty_and_invisible.yaml    # moderate (narcissistic wound)
 |               |-- only_love_can_save_me.yaml  # high frame-hazard
+|               |-- *_run_*.yaml                # generated per-condition cases (gitignored)
 |
 |-- agents/
 |   |-- base_agent.py            # abstract interface all providers implement
@@ -136,19 +167,39 @@ dyadic-sim/
 |
 |-- simulation/
 |   |-- dyad.py                  # orchestrates the two-agent exchange
+|   |-- opening.py               # the therapist's first words (speech, not a stage cue)
+|   |-- utterance.py             # speech-only rule + stage-direction stripper
 |   |-- turn_manager.py          # builds per-turn context: prior + state + history
 |   |-- hazard_monitor.py        # watches for frame pressure and crisis signals
 |   |-- session.py               # session lifecycle: start / resume / close
 |
 |-- analysis/
-|   |-- embeddings.py            # shared sentence-transformer model loader
+|   |-- ANALYSIS.md              # the analysis layer, in detail
+|   |-- embeddings.py            # shared sentence-transformer loader (revision-pinnable)
 |   |-- validation/              # manipulation-validity checks (see Validation Analyses)
-|       |-- paths.py             # canonical data/ input + output locations
-|       |-- sessions.py          # shared session loader
-|       |-- symptom_embed.py     # embedding manipulation check (target_z)
-|       |-- compare_baseline.py  # pilot vs baseline delta + figure
+|       |-- paths.py             # canonical data/ locations; verifies MANIFEST
+|       |-- sessions.py          # session loader: status, text units, token chunking
+|       |-- quality.py           # QC flags: role-confused / annotation-only turns
+|       |-- design.py            # corpus vs config/designs.yaml
+|       |-- design_status.py     # which cells are done, at what n, what is missing
+|       |-- provenance.py        # <script>.analysis_config.json beside every result
+|       |-- archive.py           # freeze + hash artifacts before a pipeline change
+|       |-- spec.py              # applies config/analysis_spec.yaml verdict rule
+|       |-- symptom_lexicon.py   # the naive lexicons, as editable word lists
+|       |-- lexicon_detect.py    # negation-scoped detection, both speakers
+|       |-- naive_prevalence.py  # PHQ-9 + MADRS panels, rate / base rate / contrast
+|       |-- embed_core.py        # shared embedding core (units, controls, estimand)
+|       |-- symptom_embed.py     # embedding manipulation check (target_z family)
+|       |-- symptom_embed_robust.py  # reference-wording robustness, same core
+|       |-- exemplars.py         # a-priori exemplar pools: purity, overlap, refsets
+|       |-- exemplars/           # the pools themselves + GENERATION.md provenance
+|       |-- heatmap.py           # shared condition x symptom figures
+|       |-- rerun.py             # every corpus through the spec + all sensitivities
+|       |-- coding_sample.py     # blinded human-coding items + sealed key
+|       |-- coding_analysis.py   # coder agreement, then instrument validity
 |
 |-- symptom_scoring/
+|   |-- prior_vocabulary.py      # PHQ-9: KEYS, LABELS (prompt), REFERENCES (analysis)
 |   |-- instrument.py            # Instrument: topics, patterns, range, prior mapping
 |   |-- instruments/
 |   |   |-- madrs.py             # the MADRS taxonomy (the one currently wired up)
@@ -160,21 +211,29 @@ dyadic-sim/
 |   |-- session_aggregator.py    # per-turn scores -> session-level score
 |   |-- translator.py            # translation step, only if the rater needs it
 |   |-- result_writer.py         # writes scores to data/results/
-|   |-- config.py                # PHQ prior vocabulary, thresholds, runtime settings
+|   |-- evaluation.py            # prior intent vs coverage vs expression vs rating
+|   |-- types.py                 # typed records passed between stages
+|   |-- config.py                # prior vocabulary, thresholds, runtime settings
 |
-|-- run_symptom_experiments.py   # batch-generate symptom-isolated sessions
-|-- evaluate_session_symptoms.py # score existing sessions with the scoring pipeline
+|-- tests/                       # uv run pytest -q
 |
-|-- data/
-|   |-- sessions/
-|   |   |-- {session_id}/
-|   |       |-- transcript.jsonl                  # full turn-by-turn exchange
-|   |       |-- therapist_state_snapshots.json    # state at each turn
-|   |       |-- patient_state_snapshots.json
-|   |       |-- metadata.json                     # models, priors, timestamps
-|   |-- reports/
-|       |-- {session_id}_report.md
+|-- data/                        # gitignored except the manifests (see below)
+    |-- sessions/
+    |   |-- {session_id}/
+    |       |-- transcript.jsonl                  # full turn-by-turn exchange
+    |       |-- therapist_state_snapshots.json    # state at each turn
+    |       |-- patient_state_snapshots.json
+    |       |-- metadata.json                     # models, priors, timestamps
+    |-- external/                                 # imported raw batches + MANIFEST.yaml
+    |-- results/                                  # everything derived
+    |-- _archive/                                 # frozen artifacts, not regenerable
 ```
+
+`manuscript/` holds the research record and is gitignored: `VALIDATION.md` (what
+the analyses found), `ANALYSIS_SPEC.md` (the frozen spec), `CODING_PROTOCOL.md`,
+`CODE_FINDINGS.md` (engineering debt), `INFRASTRUCTURE.md` (measured hardware
+constraints). `analysis/ANALYSIS.md` is gitignored on the same grounds. Links to
+either below will only resolve in a working copy.
 
 ---
 
@@ -204,7 +263,7 @@ That's it: `uv sync` reads `pyproject.toml`, creates a virtual environment, and 
 ### 3. Set up your API keys
 
 ```bash
-cp .env.example .env
+cp env.example .env
 ```
 
 Open `.env` and fill in what you have. For local-only piloting you don't need any API keys:
@@ -267,10 +326,10 @@ uv run python run.py \
   --orientation cbt \
   --turns 10
 
-# Different models in each role
+# A second model family (same model both sides — see Model Flexibility)
 uv run python run.py \
   --therapist mistral-nemo \
-  --patient llama3.1 \
+  --patient mistral-nemo \
   --case empty_and_invisible \
   --turns 20
 
@@ -291,16 +350,28 @@ Open the file and fill in each field. The `unconscious_agenda` block is held by 
 
 ## Piloting Strategy
 
-For now, we run local models:
+For now, we run local models only:
 
 ```
-Stage 1: null condition (same model both sides)
+Stage 1: null condition, one family (done)
   uv run python run.py --therapist llama3.1 --patient llama3.1 --case afraid_of_dogs
   Goal: does the role structure do anything at all with the simplest case?
 
-Stage 2: different local models
-  uv run python run.py --therapist mistral-nemo --patient llama3.1 --case afraid_of_dogs
-  Goal: does genuine alterity change the dynamics?
+Stage 2: null condition, a second family (done — all current results)
+  uv run python run.py --therapist mistral-nemo --patient mistral-nemo --case afraid_of_dogs
+  Goal: does the finding hold on a different pretraining lineage?
+
+Stage 3: genuine alterity — different models in each role (NOT yet run)
+  Goal: does a real other change the dynamics?
+  Blocked: the llama3.1 x mistral-nemo pair does not fit in 12 GB VRAM, so it
+  would evict and reload on every turn. Needs a smaller partner (~6 GB) or a
+  bigger card. See manuscript/INFRASTRUCTURE.md.
+```
+
+### Tests
+
+```bash
+uv run pytest -q          # 145 tests; pythonpath is configured in pyproject.toml
 ```
 
 ---
@@ -312,50 +383,124 @@ Stage 2: different local models
 study, which asks whether a PHQ-9 depression symptom written into the patient prior is
 actually *expressed* by the patient agent (rather than silently ignored).
 
-Analysis data lives under `data/` in two buckets (both gitignored; regenerable):
+Data lives under `data/`, split first by **raw vs derived** — local vs external
+applies only to raw. All of it is gitignored except the two manifests:
 
-- `data/ext-session-logs/` — external / imported session archives (read-only inputs)
-- `data/results/` — local analysis outputs (CSVs, figures, frozen baselines)
+```
+data/
+├── sessions/                    RAW, generated on this machine
+│   └── session_*/
+├── external/                    RAW, imported from elsewhere (read-only)
+│   ├── MANIFEST.yaml            origin + fingerprint per batch
+│   ├── _archives/               the zips each batch came from
+│   ├── llama31-2026-05/         150 sessions
+│   └── mistral-nemo-2026-06/    150 sessions
+└── results/                     DERIVED, everything computed here
+    ├── <experiment>/            + <script>.analysis_config.json per artifact
+    └── _logs/                   batch-generation console logs, one per arm
+```
+
+Sessions killed mid-write land in `data/sessions/` with `turn_count: 0`.
+`sessions.py` classifies those as `incomplete` and excludes them by default with
+a stated reason, so they never reach an analysis — no quarantine directory is
+needed.
+
+Every raw session sits exactly one level below its bucket, so a single glob
+shape reads any batch — `analysis/validation/paths.py` derives the lookup from
+the manifest rather than hardcoding directory layouts.
+
+**Adding an external batch.** Drop it in as `data/external/<name>/session_*/`,
+then add an entry to `MANIFEST.yaml`. Directory names are readable and safe to
+rename; the `model` field is the analysis label and appears as the `model`
+column in output CSVs, so changing it breaks comparability with frozen
+baselines. Record a `fingerprint` — a stable hash over sorted
+`session_id:sha256(transcript)` lines — to detect duplicate imports and to check
+a batch has not changed since the analysis that cites it:
+
+```bash
+PYTHONPATH=. python -c "from analysis.validation.paths import fingerprint; \
+  print(fingerprint('data/external/<name>'))"
+PYTHONPATH=. python -c "from analysis.validation.paths import verify; \
+  print(verify())"          # check every batch against its recorded value
+```
 
 Paths are centralised in `analysis/validation/paths.py`; run the scripts from the repo
-root with `PYTHONPATH=.`.
+root with `PYTHONPATH=.`. Defaults point at the frozen external corpus, so a bare
+run reproduces the baseline rather than analysing whatever is in `data/sessions/`.
 
-**1. Generate symptom-isolated sessions.** One PHQ-9 symptom is set to a frequency
-anchor, the other eight to "not at all":
+**Which instrument to believe is not a free choice.** The lexicon is primary
+because every firing reads back to the words that caused it; the embedding is
+convergent evidence only; MADRS-BERT is an external check; blinded human coding is
+the validation target and **does not exist yet**. The ranking, the pinned
+parameters and the rule for what counts as evidence are frozen in
+`config/analysis_spec.yaml`. `analysis/ANALYSIS.md` is the detailed map of this
+package.
+
+**1. Generate symptom-isolated sessions.** With `--injection all_nine` (the
+default) one PHQ-9 symptom is set to a frequency anchor and the other eight read
+"not at all"; with `--injection active_only` the eight are omitted entirely, so
+the prompt never names them:
 
 ```bash
 uv run python run_symptom_experiments.py \
-  --therapist llama3.1 --patient llama3.1 \
-  --case empty_and_invisible \
+  --therapist mistral-nemo --patient mistral-nemo \
+  --case afraid_of_dogs --injection active_only \
   --symptoms depressed_mood,psychomotor_changes,sleep_problems \
   --frequency "nearly every day" --repeats 20 --prefix pilot1
 ```
 
-Sessions land in `data/sessions/` tagged `pilot1_<case>_<symptom>_run_<n>`.
+Sessions land in `data/sessions/` tagged `pilot1_<case>_<symptom>_run_<n>`. A
+matched `no_symptoms` control is generated automatically — do not list it in
+`--symptoms`. Keep `--injection` and both models fixed across every top-up at one
+prefix; each changes generation, so mixing them silently splits the arm. Deepen a
+cell with `--start-run` (the number `design_status.py` prints) and `--no-control`
+so existing controls are not regenerated.
 
-**2. Run the embedding manipulation check.** Per session, cosine-similarity of the
-patient's speech to each PHQ-9 reference, z-scored within session
-(`target_z > 0` = the patient leans toward the injected symptom; `~0` = chance):
+**2. Check coverage** before analysing — derived from the sessions on disk, not
+from a hand-kept ledger, and compared against what `config/designs.yaml` declares:
+
+```bash
+PYTHONPATH=. python analysis/validation/design_status.py --prefix pilot1 --target 20
+```
+
+**3. Run the lexicon panel (primary).** Condition × symptom prevalence for the
+PHQ-9 and MADRS lexicons, patient expression and therapist uptake, each raw and
+against a matched control. `--evidence` dumps every firing with the word that
+matched and the sentence it came from, so any cell can be audited by hand:
+
+```bash
+PYTHONPATH=. python analysis/validation/naive_prevalence.py \
+  --sessions 'data/sessions/*' --prefix pilot1 --clean-text --evidence \
+  --out-dir data/results/pilot1
+```
+
+Read the **control row first**: a lexicon that fires on most sessions regardless of
+what was injected tells you nothing about the diagonal above it.
+
+**4. Run the embedding check (convergent).** Cosine similarity of the patient's
+speech to each PHQ-9 reference, z-scored within session, plus the between-session
+contrast against the matched control (`target_z_vs_control` — read this one):
 
 ```bash
 PYTHONPATH=. python analysis/validation/symptom_embed.py \
   --sessions 'data/sessions/*' --prefix pilot1 \
-  --out-dir data/results/pilot1
+  --unit bounded-turn --unit-agg max \
+  --references expanded --reference-agg mean \
+  --clean-text --by-case --out-dir data/results/pilot1
 ```
 
-**3. Compare against a baseline** — prints a delta table and writes a side-by-side
-figure with 95% CIs:
+⚠ **`--unit session` is truncated, always.** The embedding model accepts 256
+word-piece tokens and Sentence Transformers truncates silently; every whole-session
+input overflows it, so `session` describes roughly the opening turn and exists for
+reproduction only. `bounded-turn` splits just the turns that overflow and treats an
+over-limit input as a hard error. Each of the flags above is known to move results
+and all of them are recorded in the provenance sidecar written beside the output.
 
-```bash
-PYTHONPATH=. python analysis/validation/compare_baseline.py \
-  --baseline data/results/baseline_v0/symptom_embed_long.csv \
-  --pilot    data/results/pilot1/symptom_embed_long.csv \
-  --match-case --out-dir data/results/pilot1
-```
-
-Companion scripts in the package: `symptom_manifest.py` (transparent keyword/lexicon
-check), `symptom_embed_bycase.py` (split by patient case), and `symptom_embed_robust.py`
-(robustness to the reference wording).
+Also in the package: `symptom_embed_robust.py` (varies the reference wording and
+nothing else), `exemplars.py` (audits the a-priori exemplar pools), and `rerun.py`
+(every corpus through the frozen spec plus all declared sensitivities, each varying
+exactly one parameter). `symptom_embed.py` and `naive_prevalence.py` both take
+`--by-case` and `--qc-view`; flagged content is reported, never silently dropped.
 
 ### Session symptom scoring
 
@@ -374,6 +519,14 @@ Prior anchors (PHQ) and the resulting severity scores are reported separately an
 not be interpreted as the same scale. Each instrument declares how well its topics
 approximate the PHQ anchors (`close` / `partial` / `approximate` / `none`), and that
 quality flag is carried into every result.
+
+⚠ **Read the relevance gate, not the severity score.** On this corpus MADRS-BERT's
+severity head is uncalibrated: wherever relevance fires it returns 3.5–5.4 out of 6
+across every topic, controls included. Each topic also carries
+`number_of_relevant_turns`, and *that* is the usable output — detection rate agrees
+with the lexicon where the two overlap. The pipeline also reads `patient_text` raw
+(there is no `--clean-text`), so on transcripts generated before the speech-only fix
+it would score stage directions as patient speech.
 
 **Adding an instrument.** Define an `Instrument` in `symptom_scoring/instruments/` and
 register it in that package's `REGISTRY`:
@@ -438,7 +591,15 @@ transparent relevance rules without the semantic-similarity fallback.
 
 ## Theoretical Background
 
-For the full psychological and philosophical motivation behind this project, see [`manuscript/README.md`](manuscript/README.md).
+For the full psychological and philosophical motivation behind this project, see
+[`manuscript/README.md`](manuscript/README.md) — the manuscript directory is
+gitignored, so that link resolves in a working copy only.
+
+An earlier version of the analysis layer operationalised this background directly,
+as six "personhood markers" (semantic drift, reciprocal determination, role-self
+tension, Aufhebung structure, recognition dynamics, telos tracking). They were
+removed when the project narrowed to symptom scoring and now live only on the
+branch `archive/personhood-markers`; see `analysis/ANALYSIS.md`.
 
 ## License
 
