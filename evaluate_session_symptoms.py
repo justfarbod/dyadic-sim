@@ -17,7 +17,6 @@ from symptom_scoring.result_writer import (
     write_turn_csv,
 )
 
-
 DEFAULT_OUTPUT_DIR = Path("data/results/symptom_scores")
 _EXPERIMENT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
@@ -65,8 +64,19 @@ def parse_args() -> argparse.Namespace:
         help="Rater checkpoint; must match the chosen --instrument",
     )
     parser.add_argument(
+        "--model-revision",
+        help=(
+            "Pin the rater checkpoint to a git revision (commit SHA, tag, or branch). "
+            "Unpinned runs record the resolved revision in the output instead."
+        ),
+    )
+    parser.add_argument(
         "--translator-model-id",
         default="Helsinki-NLP/opus-mt-en-de",
+    )
+    parser.add_argument(
+        "--translator-revision",
+        help="Pin the translation checkpoint to a git revision",
     )
     parser.add_argument("--source-language", choices=["en", "de"], default="en")
     parser.add_argument("--aggregation", choices=["maximum"], default="maximum")
@@ -98,7 +108,9 @@ def build_config(args: argparse.Namespace) -> ScoringConfig:
     return ScoringConfig(
         instrument=get_instrument(args.instrument),
         model_id=args.model_id,
+        model_revision=args.model_revision,
         translator_model_id=args.translator_model_id,
+        translator_revision=args.translator_revision,
         source_language=args.source_language,
         device=args.device,
         batch_size=args.batch_size,

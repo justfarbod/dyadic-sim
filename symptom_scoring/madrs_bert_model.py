@@ -12,7 +12,7 @@ import re
 
 import torch
 
-from symptom_scoring.translator import resolve_device
+from symptom_scoring.translator import resolve_device, resolved_revision
 from symptom_scoring.types import ModelPrediction
 
 
@@ -27,10 +27,12 @@ class MadrsBertRegressor:
         batch_size: int | None = None,
         max_length: int = 512,
         score_range: tuple[float, float] = (0.0, 6.0),
+        revision: str | None = None,
         tokenizer=None,
         model=None,
     ):
         self.model_id = model_id
+        self.revision = revision
         self.device = resolve_device(device)
         self.batch_size = batch_size or (16 if self.device.type == "cuda" else 4)
         self.max_length = max_length
@@ -39,12 +41,15 @@ class MadrsBertRegressor:
         if tokenizer is None or model is None:
             from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-            tokenizer = AutoTokenizer.from_pretrained(model_id)
-            model = AutoModelForSequenceClassification.from_pretrained(model_id)
+            tokenizer = AutoTokenizer.from_pretrained(model_id, revision=revision)
+            model = AutoModelForSequenceClassification.from_pretrained(
+                model_id, revision=revision
+            )
 
         self.tokenizer = tokenizer
         self.model = model.to(self.device)
         self.model.eval()
+        self.resolved_revision = resolved_revision(self.model)
 
     @staticmethod
     def format_input(
@@ -189,7 +194,7 @@ class MadrsBertRegressor:
                     f"Expected one regression logit per input; received shape {tuple(logits.shape)}"
                 )
 
-            for job_id, value in zip(job_ids, logits.detach().cpu().tolist()):
+            for job_id, value in zip(job_ids, logits.detach().cpu().tolist(), strict=True):
                 raw_output = float(value)
                 if not math.isfinite(raw_output):
                     raise ValueError(

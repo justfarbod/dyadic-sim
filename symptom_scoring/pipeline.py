@@ -18,6 +18,7 @@ from symptom_scoring.transcript_parser import (
 from symptom_scoring.translator import (
     IdentityTranslator,
     MarianEnglishGermanTranslator,
+    Translator,
 )
 from symptom_scoring.turn_scorer import TurnScorer
 
@@ -30,7 +31,7 @@ class SymptomScoringPipeline:
         config: ScoringConfig,
         *,
         relevance_detector=None,
-        translator=None,
+        translator: Translator | None = None,
         regressor=None,
     ):
         self.config = config
@@ -53,6 +54,7 @@ class SymptomScoringPipeline:
                 config.translator_model_id,
                 device=config.device,
                 batch_size=config.batch_size,
+                revision=config.translator_revision,
             )
         self.regressor = regressor or MadrsBertRegressor(
             config.model_id,
@@ -60,6 +62,7 @@ class SymptomScoringPipeline:
             batch_size=config.batch_size,
             max_length=config.max_length,
             score_range=self.instrument.score_range,
+            revision=config.model_revision,
         )
         self.turn_scorer = TurnScorer(
             self.relevance_detector,
@@ -95,6 +98,13 @@ class SymptomScoringPipeline:
             )
         if prior_source in {"case_name_inferred_incomplete", "unavailable"}:
             warnings.append(f"Patient prior levels are incomplete ({prior_source}).")
+        if self.config.model_revision is None:
+            resolved = getattr(self.regressor, "resolved_revision", None)
+            warnings.append(
+                "Rater checkpoint was not pinned; results track whatever version "
+                f"{self.config.model_id} points at"
+                + (f" (resolved to {resolved})." if resolved else ".")
+            )
 
         return {
             "schema_version": "2.0",
@@ -108,7 +118,15 @@ class SymptomScoringPipeline:
             "instrument": self.instrument.describe(),
             "model": {
                 "rater_model_id": self.config.model_id,
+                "rater_revision_requested": self.config.model_revision,
+                "rater_revision_resolved": getattr(
+                    self.regressor, "resolved_revision", None
+                ),
                 "translation_model_id": self.translator.model_id,
+                "translation_revision_requested": self.config.translator_revision,
+                "translation_revision_resolved": getattr(
+                    self.translator, "resolved_revision", None
+                ),
                 "device": str(self.regressor.device),
                 "batch_size": self.regressor.batch_size,
                 "max_length": self.config.max_length,

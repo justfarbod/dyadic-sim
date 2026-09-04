@@ -34,6 +34,11 @@ class ScoringConfig:
     instrument: Instrument = field(default=DEFAULT_INSTRUMENT)
     model_id: str = "webesama/MADRS-BERT"
     translator_model_id: str = "Helsinki-NLP/opus-mt-en-de"
+    # Third-party checkpoints can be updated by their owners. Pin a commit SHA
+    # here to freeze results; the revision actually used is recorded in every
+    # output either way.
+    model_revision: str | None = None
+    translator_revision: str | None = None
     source_language: str = "en"
     device: str = "auto"
     batch_size: int | None = None
