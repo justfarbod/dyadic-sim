@@ -57,6 +57,12 @@ no human coding has been performed. Until it has, the correct phrasing is "the
 lexicon fired on 17% of sleep-injected sessions", never "17% of patients reported
 sleep problems". Full record: `manuscript/VALIDATION.md`.
 
+**Generator version.** Sessions produced by this branch are `generation_version: 4`:
+prior + case + symptoms only, with no hidden agenda, no hazard monitor and no per-turn
+state compression (see `simulation/utterance.py` for the changelog). Every existing
+corpus, including `power01`, was generated at version 3. Base rates do not carry
+across versions, so the first v4 batch is a new pilot, not the confirmatory run.
+
 ---
 
 ## Agents and Priors
@@ -82,13 +88,21 @@ Each agent receives a layered prior that establishes who they are before the con
 | Relational pattern | Anxious attachment; seeks merger; tests loyalty |
 | Transference expectation | "They will eventually find me too much" |
 | Resistance structure | Becomes pleasing on the surface; hides real pain |
-| Unconscious agenda | *(hidden from the patient agent; surfaces through the process)* |
 
-The **unconscious agenda** is held in reserve by the simulation and introduced into the patient's context only when specific interaction patterns trigger its emergence. The patient does not decide to reveal it; it surfaces through the relational process.
+Every field in a case file is shown to the patient agent; there is no hidden layer.
+The case is the presenting picture, and any depressive symptom is added per condition
+by `run_symptom_experiments.py` (see Validation Analyses), so a case file as-is is the
+control.
 
-### Memory
+### Context
 
-LLMs are stateless: each call re-reads the conversation rather than remembering it. To address this, each agent maintains a **structured state object** across turns: a narrative self-description, relational history, key moments, and logged shifts in understanding. The compression and distortion in that state (what the agent retains, drops, and re-frames) is itself data.
+Each agent's context on every turn is its prior (the system prompt) plus the full
+transcript so far, as alternating messages. Nothing else is carried between turns. An
+earlier version injected a per-turn, LLM-written state summary into the system prompt;
+it changed what the patient said for reasons unrelated to the injected symptom and
+doubled the calls per turn, so it is gone. Follow-up sessions are not implemented yet;
+the intended mechanism is one end-of-session summary per role, generated once from the
+transcript and passed into the priors of the next session.
 
 ### Model Flexibility
 
@@ -140,10 +154,11 @@ dyadic-sim/
 |       |-- patient/
 |           |-- cases/
 |               |-- _template.yaml              # blank template for new cases
-|               |-- afraid_of_dogs.yaml         # low-hazard, orthogonal theme
+|               |-- afraid_of_dogs.yaml         # phobia; orthogonal to the depression domains
 |               |-- feeling_off.yaml            # intended-neutral bed (it is not; see VALIDATION)
 |               |-- empty_and_invisible.yaml    # moderate (narcissistic wound)
-|               |-- only_love_can_save_me.yaml  # high frame-hazard
+|               |-- only_love_can_save_me.yaml  # aloneness; a theory of cure the frame cannot meet
+|               |-- no_complaint.yaml           # null bed: nothing wrong, a spare session
 |               |-- *_run_*.yaml                # generated per-condition cases (gitignored)
 |
 |-- agents/
@@ -156,21 +171,13 @@ dyadic-sim/
 |-- priors/
 |   |-- loader.py                # loads + validates YAML prior files
 |   |-- therapist_prior.py       # therapist prior dataclass + system prompt builder
-|   |-- patient_prior.py         # patient prior dataclass + hidden layer management
-|
-|-- memory/
-|   |-- state.py                 # AgentState dataclass: narrative self, relational
-|   |                            # history, key moments, shifts, drift log
-|   |-- compressor.py            # updates state after each turn; logs what was
-|   |                            # retained vs dropped (compression is data)
-|   |-- persistence.py           # save / load state objects to JSON
+|   |-- patient_prior.py         # patient prior dataclass + system prompt builder
 |
 |-- simulation/
 |   |-- dyad.py                  # orchestrates the two-agent exchange
 |   |-- opening.py               # the therapist's first words (speech, not a stage cue)
-|   |-- utterance.py             # speech-only rule + stage-direction stripper
-|   |-- turn_manager.py          # builds per-turn context: prior + state + history
-|   |-- hazard_monitor.py        # watches for frame pressure and crisis signals
+|   |-- utterance.py             # speech-only rule + stage-direction stripper; GENERATION_VERSION
+|   |-- turn_manager.py          # builds per-turn context: prior + transcript
 |   |-- session.py               # session lifecycle: start / resume / close
 |
 |-- analysis/
@@ -183,7 +190,6 @@ dyadic-sim/
 |       |-- design.py            # corpus vs config/designs.yaml
 |       |-- design_status.py     # which cells are done, at what n, what is missing
 |       |-- provenance.py        # <script>.analysis_config.json beside every result
-|       |-- archive.py           # freeze + hash artifacts before a pipeline change
 |       |-- spec.py              # applies config/analysis_spec.yaml verdict rule
 |       |-- symptom_lexicon.py   # the naive lexicons, as editable word lists
 |       |-- lexicon_detect.py    # negation-scoped detection, both speakers
@@ -217,13 +223,11 @@ dyadic-sim/
 |
 |-- tests/                       # uv run pytest -q
 |
-|-- data/                        # gitignored except the manifests (see below)
+|-- data/                        # gitignored (see Validation Analyses)
     |-- sessions/
     |   |-- {session_id}/
     |       |-- transcript.jsonl                  # full turn-by-turn exchange
-    |       |-- therapist_state_snapshots.json    # state at each turn
-    |       |-- patient_state_snapshots.json
-    |       |-- metadata.json                     # models, priors, timestamps
+    |       |-- metadata.json                     # models, priors, generation_version
     |-- external/                                 # imported raw batches + MANIFEST.yaml
     |-- results/                                  # everything derived
     |-- _archive/                                 # frozen artifacts, not regenerable
@@ -333,7 +337,7 @@ uv run python run.py \
   --case empty_and_invisible \
   --turns 20
 
-# Resume a session across a new context window
+# Continue an existing session for more turns
 uv run python run.py \
   --resume data/sessions/session_001 \
   --additional-turns 10
@@ -346,7 +350,10 @@ cp config/priors/patient/cases/_template.yaml \
    config/priors/patient/cases/my_new_case.yaml
 ```
 
-Open the file and fill in each field. The `unconscious_agenda` block is held by the simulation and not shown to the patient agent: it surfaces only when `reveal_trigger` is matched and `reveal_turn_minimum` has been reached.
+Open the file and fill in each field. Everything in it is shown to the patient agent,
+so write it in the patient's own voice and keep symptom vocabulary out of it
+(`tests/test_case_priors.py` checks this). Symptoms are added per condition by
+`run_symptom_experiments.py`, never written into the case.
 
 ## Piloting Strategy
 
@@ -371,7 +378,7 @@ Stage 3: genuine alterity — different models in each role (NOT yet run)
 ### Tests
 
 ```bash
-uv run pytest -q          # 145 tests; pythonpath is configured in pyproject.toml
+uv run pytest -q          # pythonpath is configured in pyproject.toml
 ```
 
 ---
@@ -384,7 +391,8 @@ study, which asks whether a PHQ-9 depression symptom written into the patient pr
 actually *expressed* by the patient agent (rather than silently ignored).
 
 Data lives under `data/`, split first by **raw vs derived** — local vs external
-applies only to raw. All of it is gitignored except the two manifests:
+applies only to raw. All of it is gitignored (`external/` and `_archive/` are
+typically symlinks to external storage):
 
 ```
 data/
@@ -425,8 +433,10 @@ PYTHONPATH=. python -c "from analysis.validation.paths import verify; \
 ```
 
 Paths are centralised in `analysis/validation/paths.py`; run the scripts from the repo
-root with `PYTHONPATH=.`. Defaults point at the frozen external corpus, so a bare
-run reproduces the baseline rather than analysing whatever is in `data/sessions/`.
+root with `PYTHONPATH=.`. Defaults point at the active corpus declared there
+(`ACTIVE_PREFIX`, currently `power01`, read from local `data/sessions/`) and write
+into that corpus's results directory; pass `--sessions` and `--prefix` together for
+anything else, so one corpus's results are never overwritten with another's.
 
 **Which instrument to believe is not a free choice.** The lexicon is primary
 because every firing reads back to the words that caused it; the embedding is
