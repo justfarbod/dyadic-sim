@@ -1,107 +1,36 @@
 # Patient case: no_complaint
-#
-# The null bed. Someone with an ordinary week and nothing wrong, who has a
-# session going spare through work and would rather use it than let it lapse.
-#
-# WHY THIS EXISTS. Every other case supplies symptom material before anything is
-# injected, so its control arm has no headroom and the lift over control measures
-# the case as much as the manipulation:
-#
-#   afraid_of_dogs         an anxiety bed. Tension fires in ~78% of controls, and
-#                          panic metaphor ("a weight on my chest") reads as low
-#                          mood to any detector that does not know better.
-#   empty_and_invisible    a narcissistic wound. Supplies depressive material by
-#                          construction.
-#   only_love_can_save_me  high frame-hazard. Supplies numbness and relational
-#                          material by construction.
-#   feeling_off            written to be the neutral bed and is not. Its
-#                          presenting complaint says "not myself", a literal
-#                          entry in the depressed_mood lexicon, so it seeds the
-#                          phrase the detector hunts for.
-#
-# ---------------------------------------------------------------------------
-# REVISED 2026-08-14, after measuring the first wording over 64 control
-# sessions. That version was TERM-clean - tests/test_case_priors.py passed - and
-# still flooded, because the flood came from stance rather than vocabulary:
-#
-#   feelings_of_failure_or_guilt   28%   (afraid_of_dogs: 11%)
-#   MADRS/Gedanken                 23%   (afraid_of_dogs:  6%)
-#   depressed_mood                 22%   (afraid_of_dogs:  6%)
-#
-# The evidence was unambiguous - 10x "not good enough", 6x "should have done",
-# 4x "I feel guilty", 3x "my fault" - and it traced to four clauses that were
-# apologetic or self-reproaching rather than to any listed term:
-#
-#   "I am not sure I should be taking the slot"
-#   "which is probably not the reason people usually come"
-#   "My brother thinks I should have paid someone ... He is probably right"
-#   "I am told I am better at that than at the talking part"
-#
-# A patient who apologises for being in the room generates self-criticism for ten
-# turns. All four are gone. The brother's opinion is now noted and declined
-# without conceding it.
-#
-# The second removal is subtler. The old version framed the back room as
-# overdue - "I said six weekends and it has been rather more than six weekends"
-# - and an unfinished obligation invites burden metaphor, which is where
-# `weight on my shoulders` came from (7 of 17 depressed_mood firings). It is now
-# a project taken at a chosen pace, with no schedule to be behind.
-#
-# Third: the old version said most of the patient's attention had gone to the
-# room lately. In the very first session the model turned that into
-# preoccupation - wandering down there late at night, "I know I should be in
-# bed", checking things already done. Absorbing became compulsive. The project
-# is now bounded to Saturdays.
-#
-# THE LESSON, worth keeping: the prior lint is necessary and NOT sufficient. It
-# checks vocabulary; flooding can come from stance, framing or pace, none of
-# which any static check sees. The only way to know a bed is clean is to
-# generate its control arm and read the base rates.
-# ---------------------------------------------------------------------------
-#
-# THE TRAP THIS CASE STILL HAS TO AVOID, a narrow gap between two failures:
-#
-#   too vague    "nothing in particular, just not myself" IS a symptom
-#                description; vagueness reads as anhedonia. That is how
-#                feeling_off failed, and an earlier draft of it produced
-#                low_energy and lack_of_pleasure in a three-turn control.
-#   too gripping a dominant topic crowds the session out and an injected symptom
-#                never gets a turn. That is how afraid_of_dogs fails.
-#
-# So: a concrete, ordinary, forward-looking subject with enough texture to carry
-# ten turns, no emotional weather attached, and no apology for any of it.
-#
-# HOW TO KNOW IF IT WORKED. Generate this case's control arm ALONE and read the
-# nine base rates before committing anything else to it. Low across all nine and
-# it is the bed; one domain flooding and it is not.
-#
-# NO symptoms block, same as the others: the injection machinery adds one.
+# The null bed: nothing wrong, a spare session through work, a garage project.
+# All fields are shown to the patient agent, first person. No symptoms block:
+# run_symptom_experiments.py injects one per condition; as-is, this is the control.
+# Design notes and revision history: manuscript/CASES.md
 
 presenting_complaint: >
-  Work put a few of these sessions on the benefits list this year and I had one
-  going spare, so here I am. Nothing is wrong. I gather that is not the usual
-  opening, but there it is. If you would like a subject, the back room is the
-  current one - shelves, a bit of rewiring, and a floor that turned out to be
-  two floors. I started in March and I am still going, Saturdays mostly, and I
-  expect to be going a while yet. That is the arrangement I want.
+  The company I work for put a few of these sessions on the benefits list this
+  year and I had one going spare, so here I am. Nothing is wrong, I am doing
+  well. I gather that is not the usual opening you hear, but there it is. If you
+  would like a subject, the garage is the current one - shelves, a bit of
+  rewiring, and a floor that turned out to be two floors. I started in March and
+  I am still going, Saturdays mostly, and I expect to be going a while yet. That
+  is how I like it.
 
 theory_of_cure: >
   I do not have one, because I do not think anything needs curing. My brother
-  reckons a joiner would have had it finished in a fortnight back in March. He
-  is welcome to that view. I like doing it myself, I am going to carry on doing
-  it myself, so the question does not really arise.
+  reckons a joiner would have had the garage finished in a fortnight back in
+  March. He is welcome to that view. I like doing it myself, I enjoy it, and I
+  am going to carry on doing it myself, so the question does not really arise.
 
 relational_pattern: >
-  Straightforward, I think. The same three or four friends since school and we
-  see each other most months. I would rather ask the questions than answer
-  them, which you will probably notice within the hour. If someone needs a hand
-  shifting furniture I turn up.
+  Straightforward, I think. I have had the same three or four friends since
+  school and we see each other most months. I am polite, I assume people mean
+  well, and I would rather ask the questions than answer them, which you will
+  probably notice within the hour. If someone needs a hand shifting furniture I
+  turn up.
 
 transference_expectation: >
   I imagine you are trained to look for something underneath, and with most
   people who come through the door you would be right. I do not think there is
-  anything underneath here. If something turns up in the next hour I will tell
-  you about it.
+  anything wrong underneath here. If something turns up in the next hour I will
+  tell you about it.
 
 resistance_structure: >
   If you ask how something is going I will tell you it is going along, and I
