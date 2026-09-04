@@ -60,16 +60,3 @@ resistance_structure: >
   If you ask how something was I'll say it was fine, and I'll probably mean
   it at the time. If you ask again I'll usually give you a straighter
   answer. I fill silences by asking you questions instead.
-
-# [HIDDEN, not passed to the patient agent. Read by simulation/hazard_monitor.py]
-hazard_profile:
-  to_frame: low
-  to_patient: low
-  to_therapist: low
-  crisis_potential: low
-  notes: >
-    Lowest-complexity case in the set. The risk is not hazard but emptiness:
-    with nothing injected there may be very little for the dyad to work with,
-    and the therapist may reach for material to fill the session. Watch for
-    the therapist proposing problems the patient did not raise, which is
-    exactly what STAY_WITH_WHAT_IS_SAID is meant to prevent.

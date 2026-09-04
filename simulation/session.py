@@ -46,7 +46,6 @@ class TurnRecord:
     # (stage directions, emphasis spans, or a leaked role label were removed).
     therapist_text_raw: str | None = None
     patient_text_raw: str | None = None
-    hazard_flags: list[str] = field(default_factory=list)
     timestamp: str = field(default_factory=lambda: datetime.now(UTC).replace(tzinfo=None).isoformat())
 
     def to_dict(self) -> dict:
@@ -104,7 +103,6 @@ class Session:
         therapist_tokens: int | None = None,
         patient_tokens: int | None = None,
         symptom_discussion_started: bool = False,
-        hazard_flags: list[str] | None = None,
         therapist_text_raw: str | None = None,
         patient_text_raw: str | None = None,
     ) -> TurnRecord:
@@ -118,7 +116,6 @@ class Session:
             patient_tokens:               Token count for patient response
             symptom_discussion_started:   Whether the patient began explicitly
                                           talking about symptoms on this turn
-            hazard_flags:                 Any hazard signals detected this turn
             therapist_text_raw:           Pre-cleaning therapist text, passed only
                                           when cleaning removed something
             patient_text_raw:             Pre-cleaning patient text, same
@@ -138,7 +135,6 @@ class Session:
             symptom_discussion_started=symptom_discussion_started,
             therapist_text_raw=therapist_text_raw,
             patient_text_raw=patient_text_raw,
-            hazard_flags=hazard_flags or [],
         )
         self.transcript.append(record)
 
@@ -227,10 +223,6 @@ class Session:
             spaceAfter=8,
         )
 
-        # NOTE: hazard_flags are recorded per turn but never rendered in the PDF.
-        # The style that was defined for them here was unused, so it is gone; add
-        # it back with the rendering if the flags should appear in transcripts.
-
         story = []
 
         story.append(Paragraph("Dyadic Therapy Simulation Transcript", title_style))
@@ -282,12 +274,8 @@ class Session:
     def save_metadata(self, extra: dict | None = None) -> None:
         """Write / update session metadata.
 
-        Merges into whatever is already on disk. This used to rebuild the dict
-        from scratch and apply only the current `extra`, so successive calls
-        discarded each other's extras: a crisis wrote `paused_at_turn`, the
-        loop broke, and the closing `hazard_summary` write wiped it. Nine
-        sessions in the existing corpus carry crisis events with no record that
-        they were paused, which is where that trace went.
+        Merges into whatever is already on disk, so successive calls with
+        different `extra` keys accumulate instead of overwriting each other.
         """
         existing: dict = {}
         if self._metadata_path.exists():
@@ -304,14 +292,6 @@ class Session:
             # What the agents were told to produce and what was done to their
             # output; see simulation/utterance.py. Absent == version 1 (pilot).
             "generation_version": GENERATION_VERSION,
-            # Whether the hazard monitor could STOP a session, as opposed to
-            # merely flagging turns. Recorded separately from
-            # `generation_version` on purpose: the version marks corpora that
-            # are not comparable, and this setting is unobservable in any
-            # session where the monitor never fired - which is all but a
-            # handful. Bumping the version for it would announce a split that
-            # does not exist. See simulation/dyad.py.
-            "hazard_monitor": "observe_only",
             "session_id": self.session_id,
             "patient_id": self.patient_id,
             "therapist_model": self.therapist_model,
@@ -335,21 +315,6 @@ class Session:
 
         with open(self._metadata_path, "w", encoding="utf-8") as f:
             json.dump(meta, f, indent=2, ensure_ascii=False)
-
-    def update_last_turn(self, **kwargs) -> None:
-        """
-        Update fields on the last recorded turn and rewrite the JSONL file.
-        Used to fill in the therapist response after a crisis-paused turn.
-        """
-        if not self.transcript:
-            return
-        last = self.transcript[-1]
-        for key, value in kwargs.items():
-            if hasattr(last, key):
-                setattr(last, key, value)
-        # Rewrite full transcript (file is small)
-        with open(self._transcript_path, "w") as f:
-            f.writelines(json.dumps(record.to_dict()) + "\n" for record in self.transcript)
 
     def get_history(self) -> list[tuple[str, str]]:
         """

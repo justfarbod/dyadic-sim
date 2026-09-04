@@ -9,7 +9,6 @@ from memory.persistence import load_latest_state, save_state_snapshot
 from memory.state import AgentState
 from priors.patient_prior import PatientPrior, build_patient_prior
 from priors.therapist_prior import TherapistPrior, build_therapist_prior
-from simulation.hazard_monitor import HazardMonitor
 from simulation.opening import opening_utterance
 from simulation.session import Session, new_session, resume_session
 from simulation.turn_manager import build_patient_context, build_therapist_context
@@ -87,9 +86,6 @@ class Dyad:
             prior_text=self.patient_prior.build_system_prompt(),
         )
 
-        # Hazard monitor
-        self.hazard_monitor = HazardMonitor(self.patient_prior.hazard_profile)
-
     def run(self, n_turns: int = 10, max_tokens: int = 300) -> Session:
         """
         Run the dyadic exchange for n_turns turns.
@@ -106,11 +102,6 @@ class Dyad:
         opening_prompt = opening_utterance()
 
         start_turn = self.session.turn_count + 1
-
-        # If resuming after a crisis pause, the last turn has an empty
-        # therapist response.  Run a therapist-only half-turn first so
-        # the therapist can respond to the crisis utterance.
-        self._complete_crisis_half_turn(max_tokens)
 
         for turn_num in range(start_turn, start_turn + n_turns):
             console.print(f"\n[dim]-- Turn {turn_num} --[/dim]")
@@ -151,41 +142,6 @@ class Dyad:
                 self.patient_prior.symptom_discussion.started = False
 
             _print_turn("Patient", patient_text, "magenta")
-
-            # --- Hazard check ---
-
-            hazard_report = self.hazard_monitor.check_turn(patient_text, turn_num)
-            hazard_flags = []
-
-            # OBSERVE-ONLY. Detection runs and is recorded; it no longer stops
-            # the session.
-            #
-            # `CRISIS_SIGNALS` is bare substring containment - no word
-            # boundaries, no context - so it fires on things that are not crisis
-            # language at all. Every trigger in the corpus so far was spurious,
-            # four of them on "end it" inside the word "pretend it", one on
-            # "can't go on walks in the park", one on being hurt while fleeing a
-            # dog. Each cost the session the rest of its turns, which is a worse
-            # outcome than not pausing: it silently truncates a transcript and
-            # the truncation then looks like data.
-            #
-            # The defect is the GATE, not the detector, so only the gate is
-            # removed. Turns still carry a `crisis` flag and `hazard_summary`
-            # still records every hit, which is what a better matcher will have
-            # to be built and tested against. Restoring the pause is a decision
-            # for that version, not this one.
-            if hazard_report.crisis_detected:
-                hazard_flags.append("crisis")
-                console.print(
-                    f"[yellow] Crisis-signal match at turn {turn_num} "
-                    f"(recorded, not paused): {hazard_report.crisis_signals}[/yellow]"
-                )
-
-            if hazard_report.frame_pressure_detected:
-                hazard_flags.append("frame_pressure")
-                console.print(
-                    f"[yellow] Frame pressure at turn {turn_num}[/yellow]"
-                )
 
             # --- Therapist turn ---
 
@@ -237,7 +193,6 @@ class Dyad:
                 therapist_tokens=therapist_response.output_tokens,
                 patient_tokens=patient_response.output_tokens,
                 symptom_discussion_started=symptom_discussion_started,
-                hazard_flags=hazard_flags,
                 therapist_text_raw=(
                     therapist_text_raw if therapist_text_raw != therapist_text else None
                 ),
@@ -247,72 +202,8 @@ class Dyad:
             )
 
         console.rule("[bold]Session complete[/bold]")
-        self.session.save_metadata({"hazard_summary": self.hazard_monitor.summary()})
+        self.session.save_metadata()
         return self.session
-
-    def _complete_crisis_half_turn(self, max_tokens: int) -> None:
-        """
-        If the last recorded turn has an empty therapist response (crisis
-        pause), run the therapist side now so the session can continue.
-
-        Retained for sessions recorded while the hazard monitor still paused
-        generation. No new session can end this way - the monitor is
-        observe-only - but `--resume` may be pointed at an older transcript,
-        and a half-turn there would otherwise leave the therapist side blank
-        for the rest of the run.
-        """
-        if not self.session.transcript:
-            return
-        last = self.session.transcript[-1]
-        if last.therapist_text:
-            return
-
-        console.print("\n[bold yellow]Completing therapist response for crisis turn...[/bold yellow]")
-
-        history = self.session.get_history()
-        patient_text = last.patient_text
-
-        therapist_system, therapist_messages = build_therapist_context(
-            prior=self.therapist_prior,
-            state=self.therapist_state,
-            history=history[:-1],  # exclude the incomplete turn
-            latest_patient_turn=patient_text,
-        )
-
-        therapist_response = self.therapist_agent.complete(
-            system_prompt=therapist_system,
-            messages=therapist_messages,
-            max_tokens=max_tokens,
-        )
-        therapist_text_raw = therapist_response.content.strip()
-        therapist_text = clean_utterance(therapist_text_raw)
-
-        _print_turn("Therapist", therapist_text, "cyan")
-
-        # Compress states for this turn
-        if self.compress_states:
-            self.therapist_state = compress_turn(
-                agent=self.therapist_agent,
-                state=self.therapist_state,
-                own_turn=therapist_text,
-                other_turn=patient_text,
-                turn_number=last.turn,
-            )
-            self.patient_state = compress_turn(
-                agent=self.patient_agent,
-                state=self.patient_state,
-                own_turn=patient_text,
-                other_turn=therapist_text,
-                turn_number=last.turn,
-            )
-
-        # Update the transcript record and save
-        self.session.update_last_turn(
-            therapist_text=therapist_text,
-            therapist_tokens=therapist_response.output_tokens,
-        )
-        save_state_snapshot(self.therapist_state, self.session.session_dir, last.turn)
-        save_state_snapshot(self.patient_state, self.session.session_dir, last.turn)
 
     def _init_state(self, role: str, model: str, prior_text: str) -> AgentState:
         """

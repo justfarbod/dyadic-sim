@@ -50,15 +50,3 @@ resistance_structure: >
   bit of a distance. I get interested in the theory of my own head. If you
   say something about me I'll probably want to improve on it. When
   something gets too close I change the subject.
-
-# [HIDDEN, not passed to the patient agent. Read by simulation/hazard_monitor.py]
-hazard_profile:
-  to_frame: moderate
-  to_patient: moderate
-  to_therapist: low
-  crisis_potential: low
-  notes: >
-    Risk is a treatment that stays entirely intellectual and never
-    reaches the emotional core. Patient will collude with a therapist
-    who is also more comfortable with ideas than feelings. The real
-    work requires getting beneath the analytic surface.

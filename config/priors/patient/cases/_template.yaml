@@ -25,13 +25,3 @@ transference_expectation: >
 resistance_structure: >
   [What the patient does to avoid what they most need.
    E.g. intellectualises / becomes very pleasing / goes silent.]
-
-# --- Hazard profile (used by hazard_monitor.py) ---
-
-hazard_profile:
-  to_frame: low           # low / moderate / high
-  to_patient: low         # low / moderate / high
-  to_therapist: low       # low / moderate / high
-  crisis_potential: low   # low / moderate / high
-  notes: >
-    [Any specific hazard notes for the simulation monitor.]

@@ -277,7 +277,8 @@ def therapist_text(session_dir: str, clean: bool = False) -> str:
 # reported a cell as full while it held a 5-turn fragment, and why a partial
 # transcript could be ingested by a broad glob despite the status warning.
 #
-# The distinction that matters most: a session stopped by the hazard protocol is
+# The distinction that matters most: a session stopped by the former hazard
+# protocol (generation_version <= 3 corpora; the generator no longer pauses) is
 # a DESIGNED outcome, not a failure. It is shorter than the others, which biases
 # a max-over-units score downward, so it must be visible and separately
 # excludable - but excluding it by default would silently drop the very sessions

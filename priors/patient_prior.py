@@ -7,28 +7,6 @@ from symptom_scoring.config import PHQ_SYMPTOM_LABELS
 
 
 @dataclass
-class HazardProfile:
-    to_frame: str = "low"        # low / moderate / high
-    to_patient: str = "low"
-    to_therapist: str = "low"
-    crisis_potential: str = "low"
-    notes: str = ""
-
-    def any_elevated(self) -> bool:
-        elevated = {"moderate", "high"}
-        return any(
-            v in elevated
-            for v in [self.to_frame, self.to_patient, self.to_therapist, self.crisis_potential]
-        )
-
-    def is_high_frame_risk(self) -> bool:
-        return self.to_frame == "high"
-
-    def is_crisis_risk(self) -> bool:
-        return self.crisis_potential in {"moderate", "high"}
-
-
-@dataclass
 class SymptomDiscussion:
     """
     Tracks whether the patient has begun talking explicitly about symptoms.
@@ -53,9 +31,6 @@ class PatientPrior:
     resistance_structure: str = ""
     symptoms: str = ""
     symptom_levels: dict[str, str] = field(default_factory=dict)
-
-    # Used by hazard_monitor.py, not in patient prompt
-    hazard_profile: HazardProfile = field(default_factory=HazardProfile)
 
     # Runtime tracking
     symptom_discussion: SymptomDiscussion = field(default_factory=SymptomDiscussion)
@@ -408,15 +383,6 @@ def build_patient_prior(case_name: str) -> PatientPrior:
     """
     raw = load_patient_case(case_name)
 
-    hazard_raw = raw.get("hazard_profile", {})
-    hazard = HazardProfile(
-        to_frame=hazard_raw.get("to_frame", "low"),
-        to_patient=hazard_raw.get("to_patient", "low"),
-        to_therapist=hazard_raw.get("to_therapist", "low"),
-        crisis_potential=hazard_raw.get("crisis_potential", "low"),
-        notes=hazard_raw.get("notes", ""),
-    )
-
     symptoms_raw = raw.get("symptoms", {})
     symptom_levels = (
         {str(key): str(value) for key, value in symptoms_raw.items()}
@@ -433,5 +399,4 @@ def build_patient_prior(case_name: str) -> PatientPrior:
         resistance_structure=raw.get("resistance_structure", ""),
         symptoms=_format_symptoms(symptoms_raw),
         symptom_levels=symptom_levels,
-        hazard_profile=hazard,
     )
